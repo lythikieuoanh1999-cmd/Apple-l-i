@@ -15,7 +15,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 // API KEYS
-                Section("API Keys") {
+                Section {
                     ForEach(store.providers) { p in
                         Button { keyProvider = p } label: {
                             HStack {
@@ -37,6 +37,8 @@ struct SettingsView: View {
                             }
                         }
                     }
+                } header: {
+                    Text("API Keys")
                 } footer: {
                     Text("Key được mã hóa (Fernet) khi lưu trên máy chủ. AI có key sẽ hiện ra để chọn khi chat.")
                 }
