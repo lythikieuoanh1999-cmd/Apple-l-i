@@ -10,11 +10,11 @@ jobs:
     runs-on: macos-15
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      # Cần Xcode mới (SDK iOS 26) để biên dịch hiệu ứng Liquid Glass (GlassKit.swift)
-      - name: Select latest Xcode (26.x)
+      # Select latest stable Xcode
+      - name: Select latest Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
@@ -31,12 +31,19 @@ jobs:
         run: |
           set -eo pipefail
           xcodegen generate
-          ls -la
+          echo "✅ XcodeGen project generated successfully"
+          ls -la *.xcodeproj 2>/dev/null || echo "⚠️  No xcodeproj found"
 
       - name: Show available schemes
-        run: xcodebuild -list -project KENIOS.xcodeproj
+        run: |
+          if [ -f "KENIOS.xcodeproj" ]; then
+            xcodebuild -list -project KENIOS.xcodeproj
+          else
+            echo "❌ KENIOS.xcodeproj not found. Check project.yml in XcodeGen config"
+            exit 1
+          fi
 
-      - name: Build (no code signing)
+      - name: Build for iOS (no code signing)
         run: |
           set -eo pipefail
           xcodebuild \
@@ -46,31 +53,71 @@ jobs:
             -sdk iphoneos \
             -derivedDataPath build \
             -destination "generic/platform=iOS" \
+            CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
-            build
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            build 2>&1 | tee build.log
+          
+          echo "✅ Build completed successfully"
+
+      - name: Check build output
+        run: |
+          echo "📂 Build Products Structure:"
+          find build/Build/Products -type f -name "*.app" 2>/dev/null || echo "⚠️  No .app found in usual location"
+          find build/Build/Products -maxdepth 3 -type d | head -20
 
       - name: Package into unsigned .ipa
         run: |
           set -eo pipefail
-          APP_PATH=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          
+          # Find .app file
+          APP_PATH=$(find build/Build/Products -type d -name "*.app" | head -1)
+          
           if [ -z "$APP_PATH" ]; then
-            echo "Không tìm thấy file .app sau khi build."
-            find build/Build/Products -maxdepth 3
+            echo "❌ ERROR: .app file not found after build"
+            echo "📂 Searching in build directory:"
+            find build -type d -name "*.app" 2>/dev/null || echo "No .app found anywhere"
             exit 1
           fi
-          echo "App: $APP_PATH"
+          
+          echo "✅ Found app: $APP_PATH"
+          
+          # Create IPA structure
           rm -rf Payload
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
-          zip -r KENIOS-unsigned.ipa Payload >/dev/null
+          
+          # Create IPA zip file
+          zip -r -q KENIOS-unsigned.ipa Payload
+          
+          echo "✅ IPA created successfully"
           ls -lh KENIOS-unsigned.ipa
+
+      - name: Verify IPA contents
+        run: |
+          unzip -l KENIOS-unsigned.ipa | head -20
+          echo "..."
+          echo "✅ IPA file is valid"
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: KENIOS-unsigned-ipa
           path: KENIOS-unsigned.ipa
+          retention-days: 30
           if-no-files-found: error
+
+      - name: Build Summary
+        if: always()
+        run: |
+          echo "📊 BUILD SUMMARY"
+          echo "==============="
+          if [ -f build.log ]; then
+            echo "Build log generated ✅"
+            tail -50 build.log
+          fi
+          if [ -f KENIOS-unsigned.ipa ]; then
+            echo "IPA generated: $(ls -lh KENIOS-unsigned.ipa | awk '{print $5}')"
+          fi
