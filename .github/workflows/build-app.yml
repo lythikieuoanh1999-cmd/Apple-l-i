@@ -1,0 +1,39 @@
+name: Build App (via build-app.sh)
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Cần Xcode 26 (SDK iOS 26) để compile hiệu ứng Liquid Glass (GlassKit.swift)
+      - name: Select latest Xcode (26.x)
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Show Xcode & Swift version
+        run: |
+          xcodebuild -version
+          swift --version
+
+      # Toàn bộ logic build (XcodeGen → xcodebuild → đóng gói IPA) nằm trong build-app.sh
+      - name: Run build-app.sh
+        run: |
+          set -eo pipefail
+          chmod +x build-app.sh
+          ./build-app.sh
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KENIOS-ipa
+          path: KENIOS.ipa
+          if-no-files-found: error

@@ -27,16 +27,25 @@ struct MainTabView: View {
             CodeToolsView()
                 .tabItem { Label("Lập trình", systemImage: "chevron.left.forwardslash.chevron.right") }
                 .tag(1)
+            SocialMediaToolsView()
+                .tabItem { Label("Mạng xã hội", systemImage: "globe.badge.ellipsis") }
+                .tag(2)
             LibraryView()
                 .tabItem { Label("Thư viện", systemImage: "clock.arrow.circlepath") }
-                .tag(2)
+                .tag(3)
+            FriendsView()
+                .tabItem { Label("Bạn bè", systemImage: "person.2.fill") }
+                .tag(4)
+            TTSView() // ← THÊM: module đọc văn bản (TTS)
+                .tabItem { Label("Đọc", systemImage: "speaker.wave.2.fill") }
+                .tag(7)
             SettingsView()
                 .tabItem { Label("Cài đặt", systemImage: "gearshape.fill") }
-                .tag(3)
+                .tag(5)
             if store.isAdmin {
                 AdminView()
                     .tabItem { Label("Quản trị", systemImage: "person.2.badge.gearshape.fill") }
-                    .tag(4)
+                    .tag(6)
             }
         }
         .task {

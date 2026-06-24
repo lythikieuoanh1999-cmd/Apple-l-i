@@ -10,6 +10,8 @@ struct SettingsView: View {
     @State private var keyProvider: Provider?
     @State private var showConnections = false
     @State private var showPayment = false
+    @State private var cleanupDays = 30
+    @State private var cleaning = false
 
     var body: some View {
         NavigationStack {
@@ -102,6 +104,30 @@ struct SettingsView: View {
                         get: { store.isDark }, set: { store.setDark($0) }))
                 }
 
+                Section("Dung lượng & Dọn dẹp") {
+                    Picker("Xóa tin nhắn cũ hơn", selection: $cleanupDays) {
+                        Text("7 ngày").tag(7)
+                        Text("30 ngày").tag(30)
+                        Text("90 ngày").tag(90)
+                    }
+                    .pickerStyle(.menu)
+
+                    Button {
+                        Task { await runCleanup() }
+                    } label: {
+                        HStack {
+                            if cleaning {
+                                ProgressView().tint(.red).padding(.trailing, 4)
+                            } else {
+                                Image(systemName: "trash")
+                            }
+                            Text("Dọn dẹp cơ sở dữ liệu")
+                        }
+                        .foregroundStyle(.red)
+                    }
+                    .disabled(cleaning)
+                }
+
                 if let message { Text(message).foregroundStyle(.green).font(.footnote) }
 
                 Section {
@@ -124,10 +150,22 @@ struct SettingsView: View {
     private func saveProfile() async {
         do {
             _ = try await store.api.updateProfile(email: email, phone: phone,
-                                                  newPassword: newPassword.isEmpty ? nil : newPassword)
+                                                   newPassword: newPassword.isEmpty ? nil : newPassword)
             store.updateLocalUser(email: email, phone: phone)
             newPassword = ""; message = "Đã cập nhật."
         } catch { message = error.localizedDescription }
+    }
+
+    private func runCleanup() async {
+        cleaning = true
+        message = nil
+        do {
+            let res = try await store.api.cleanupDatabase(days: cleanupDays)
+            message = res.message
+        } catch {
+            message = "Lỗi: \(error.localizedDescription)"
+        }
+        cleaning = false
     }
 }
 

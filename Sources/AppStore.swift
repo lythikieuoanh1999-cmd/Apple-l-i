@@ -26,6 +26,14 @@ final class AppStore: ObservableObject {
 
     @Published var profiles: [ServerProfile] = []
 
+    @Published var biometricsEnabled: Bool
+    @Published var favorites: [FavoriteMessage] = []
+    @Published var promptTemplates: [PromptTemplate] = []
+
+    @Published var friends: [FriendItem] = []
+    @Published var friendRequests: [FriendRequestItem] = []
+    @Published var directMessages: [Int: [DirectMessageItem]] = [:]
+
     private let d = UserDefaults.standard
 
     init() {
@@ -42,6 +50,7 @@ final class AppStore: ObservableObject {
         isDark = d.object(forKey: "isDark") as? Bool ?? true
         language = d.string(forKey: "language") ?? "vi"
         systemPrompt = d.string(forKey: "systemPrompt") ?? ""
+        biometricsEnabled = d.bool(forKey: "biometricsEnabled")
         if let data = d.data(forKey: "profiles"),
            let list = try? JSONDecoder().decode([ServerProfile].self, from: data) {
             profiles = list
@@ -55,6 +64,7 @@ final class AppStore: ObservableObject {
     func setDark(_ v: Bool) { isDark = v; d.set(v, forKey: "isDark") }
     func setLanguage(_ v: String) { language = v; d.set(v, forKey: "language") }
     func setSystemPrompt(_ v: String) { systemPrompt = v; d.set(v, forKey: "systemPrompt") }
+    func setBiometrics(_ v: Bool) { biometricsEnabled = v; d.set(v, forKey: "biometricsEnabled") }
 
     func saveServer(url: String, type: String) {
         baseURL = url; serverType = type
@@ -107,6 +117,8 @@ final class AppStore: ObservableObject {
         Keychain.delete("token")
         providers = []; configuredKeys = []; conversations = []
         activeConversation = nil; tab = 0
+        favorites = []; promptTemplates = []
+        friends = []; friendRequests = []; directMessages = [:]
         d.set(false, forKey: "isAdmin")
     }
 
@@ -114,4 +126,26 @@ final class AppStore: ObservableObject {
     func loadKeys() async { if let l = try? await api.listKeys() { configuredKeys = Set(l.map { $0.provider }) } }
     func refreshConversations() async { if let l = try? await api.conversations() { conversations = l } }
     func openConversation(_ c: Conversation?) { activeConversation = c; tab = 0 }
+
+    func refreshFavorites() async {
+        if let l = try? await api.listFavorites() { favorites = l }
+    }
+
+    func refreshPrompts() async {
+        if let l = try? await api.listPrompts() { promptTemplates = l }
+    }
+
+    func refreshFriends() async {
+        if let l = try? await api.listFriends() { friends = l }
+    }
+
+    func refreshFriendRequests() async {
+        if let l = try? await api.listFriendRequests() { friendRequests = l }
+    }
+
+    func refreshDirectMessages(friendId: Int) async {
+        if let l = try? await api.getDirectMessages(friendId: friendId) {
+            directMessages[friendId] = l
+        }
+    }
 }

@@ -30,6 +30,7 @@ struct ChatResponse: Decodable {
     let conversationId: Int
     let provider: String
     let savedFiles: [SavedFile]?
+    let tokensUsed: Int?
 }
 
 struct EnsembleResponse: Decodable {
@@ -43,6 +44,8 @@ struct Conversation: Identifiable, Decodable, Hashable {
     let title: String?
     let provider: String?
     let updatedAt: Int?
+    let pinned: Int?
+    let shareToken: String?
 }
 
 struct ChatMessage: Identifiable, Decodable {
@@ -177,4 +180,165 @@ struct BankSettings: Decodable, Hashable {
     var bankAccount: String
     var bankName: String
     var bankWebhook: String
+    var bankApikey: String = ""
 }
+
+// ---- Đính kèm (Attachment) ----
+struct AttachmentItem: Identifiable, Hashable {
+    var id = UUID()
+    var name: String
+    var data: Data
+    var mime: String
+    var type: String  // "image" or "file"
+    var selected: Bool = true
+    var thumbnail: Data?  // for image preview
+}
+
+// ---- Prompt mẫu ----
+struct PromptTemplate: Identifiable, Decodable, Hashable {
+    let id: Int
+    let title: String
+    let content: String
+    let category: String?
+    let isPublic: Int?
+    let userId: Int?
+}
+
+// ---- Chia sẻ hội thoại ----
+struct ShareResponse: Decodable { let shareToken: String; let shareUrl: String }
+
+// ---- Tìm kiếm tin nhắn ----
+struct SearchResult: Identifiable, Decodable, Hashable {
+    let id: Int
+    let conversationId: Int
+    let conversationTitle: String?
+    let role: String
+    let snippet: String
+}
+
+// ---- Tin nhắn yêu thích ----
+struct FavoriteMessage: Identifiable, Decodable, Hashable {
+    let id: Int
+    let messageContent: String
+    let conversationId: Int?
+    let provider: String?
+    let createdAt: Int?
+}
+
+// ---- Admin thống kê ----
+struct AdminStats: Decodable {
+    let totalUsers: Int
+    let newUsers7d: Int
+    let totalConversations: Int
+    let totalMessages: Int
+    let revenueTotal: Int
+    let revenue30d: Int
+    let totalFiles: Int
+    let topProviders: [ProviderStat]
+}
+
+struct ProviderStat: Decodable, Hashable {
+    let provider: String
+    let count: Int
+}
+
+// ---- Admin API key quản lý ----
+struct AdminKeyInfo: Identifiable, Decodable, Hashable {
+    var id: String { provider }
+    let provider: String
+    let configured: Bool
+}
+
+// ---- Xuất mã zip ----
+struct ZipResponse: Decodable {
+    let zipBase64: String
+    let filename: String
+    let fileCount: Int
+}
+
+// ---- Phân hệ mạng xã hội ----
+struct SocialGenResponse: Decodable {
+    let content: String
+}
+struct SocialDownloadResponse: Decodable {
+    let fileId: Int
+    let filename: String
+    let size: Int
+}
+
+struct StreamKeyResponse: Decodable {
+    let rtmpUrl: String
+    let streamKey: String
+    let title: String?
+}
+
+struct EncryptResponse: Decodable {
+    let result: String
+}
+
+struct BinaryAnalysisResponse: Decodable {
+    let fileType: String
+    let entryPoint: String?
+    let architecture: String?
+    let sections: [String]?
+    let strings: [String]?
+    let hexDump: String
+}
+
+struct AsmResponse: Decodable {
+    let result: String
+}
+
+struct SSHResultResponse: Decodable {
+    let stdout: String
+    let stderr: String
+    let exitCode: Int
+}
+
+struct HTTPTestResponse: Decodable {
+    let status: Int
+    let headers: [String: String]
+    let body: String
+}
+
+struct SQLResultResponse: Decodable {
+    let columns: [String]
+    let rows: [[String]]
+    let message: String?
+}
+
+struct CleanupResponse: Decodable {
+    let deletedMessages: Int
+    let deletedConversations: Int
+    let freedSpace: String
+    let message: String
+}
+
+struct UserSearchResult: Identifiable, Decodable, Hashable {
+    let id: Int
+    let username: String
+}
+
+struct FriendRequestItem: Identifiable, Decodable, Hashable {
+    let id: Int
+    let senderId: Int
+    let senderName: String
+    let receiverId: Int
+    let receiverName: String
+    let createdAt: Int
+}
+
+struct FriendItem: Identifiable, Decodable, Hashable {
+    let id: Int
+    let username: String
+}
+
+struct DirectMessageItem: Identifiable, Decodable, Hashable {
+    let id: Int
+    let senderId: Int
+    let receiverId: Int
+    let content: String
+    let createdAt: Int
+    let isRead: Int
+}
+

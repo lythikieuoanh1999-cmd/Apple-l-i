@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import QuickLook
 
 struct LibraryView: View {
     @State private var seg = 0
@@ -80,6 +81,7 @@ struct FilesPane: View {
     @State private var exportDoc: ExportableFile?
     @State private var runResult: FileRunResult?
     @State private var running: Int?
+    @State private var previewURL: URL?
 
     private let cats = [("all", "Tất cả"), ("image", "Ảnh"), ("code", "Code"), ("document", "Tài liệu")]
     private let runnable: Set<String> = ["py", "js", "sh"]
@@ -102,12 +104,21 @@ struct FilesPane: View {
             List {
                 ForEach(files) { f in
                     HStack {
-                        Image(systemName: categoryIcon(f.category)).foregroundStyle(Theme.accent)
-                        VStack(alignment: .leading) {
-                            Text(f.name).lineLimit(1)
-                            Text(humanSize(f.size)).font(.caption).foregroundStyle(.secondary)
+                        Button {
+                            Task { await previewFile(f) }
+                        } label: {
+                            HStack {
+                                Image(systemName: categoryIcon(f.category)).foregroundStyle(Theme.accent)
+                                VStack(alignment: .leading) {
+                                    Text(f.name).lineLimit(1).foregroundStyle(.primary)
+                                    Text(humanSize(f.size)).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
                         }
+                        .buttonStyle(.plain)
+                        
                         Spacer()
+                        
                         if isRunnable(f.name) {
                             Button {
                                 Task { await run(f) }
@@ -116,10 +127,12 @@ struct FilesPane: View {
                                 else { Image(systemName: "play.circle") }
                             }
                             .disabled(running != nil)
+                            .buttonStyle(.plain)
                         }
                         Button { Task { await download(f) } } label: {
                             Image(systemName: "arrow.down.circle")
                         }
+                        .buttonStyle(.plain)
                     }
                 }
                 .onDelete(perform: deleteFiles)
@@ -134,10 +147,11 @@ struct FilesPane: View {
         }
         .task { await reload() }
         .fileImporter(isPresented: $showImporter,
-                      allowedContentTypes: [.item], allowsMultipleSelection: false) { handleImport($0) }
+                      allowedContentTypes: [.item], allowsMultipleSelection: true) { handleImport($0) }
         .fileExporter(isPresented: Binding(get: { exportDoc != nil }, set: { if !$0 { exportDoc = nil } }),
                       document: exportDoc, contentType: .data,
                       defaultFilename: exportDoc?.filename ?? "file") { _ in exportDoc = nil }
+        .quickLookPreview($previewURL)
         .alert("Lỗi", isPresented: .constant(error != nil)) {
             Button("OK") { error = nil }
         } message: { Text(error ?? "") }
@@ -162,30 +176,48 @@ struct FilesPane: View {
     }
 
     private func handleImport(_ result: Result<[URL], Error>) {
-        guard case .success(let urls) = result, let url = urls.first else { return }
-        let access = url.startAccessingSecurityScopedResource()
-        defer { if access { url.stopAccessingSecurityScopedResource() } }
-        guard let data = try? Data(contentsOf: url) else { return }
-        let ext = url.pathExtension.lowercased()
-        let cat: String
-        if ["png", "jpg", "jpeg", "gif", "heic", "webp"].contains(ext) { cat = "image" }
-        else if ["swift", "py", "js", "ts", "java", "c", "cpp", "go", "rs", "rb", "json", "html", "css"].contains(ext) { cat = "code" }
-        else if ["pdf", "doc", "docx", "txt", "md", "xls", "xlsx", "ppt", "pptx"].contains(ext) { cat = "document" }
-        else { cat = "other" }
+        guard case .success(let urls) = result, !urls.isEmpty else { return }
         Task {
-            do {
-                _ = try await store.api.uploadFile(name: url.lastPathComponent, category: cat,
-                                                   dataBase64: data.base64EncodedString())
-                await reload()
-            } catch { self.error = error.localizedDescription }
+            var failed: [String] = []
+            for url in urls {
+                let access = url.startAccessingSecurityScopedResource()
+                let ext = url.pathExtension.lowercased()
+                let cat: String
+                if ["png", "jpg", "jpeg", "gif", "heic", "webp"].contains(ext) { cat = "image" }
+                else if ["swift", "py", "js", "ts", "java", "c", "cpp", "go", "rs", "rb", "json", "html", "css"].contains(ext) { cat = "code" }
+                else if ["pdf", "doc", "docx", "txt", "md", "xls", "xlsx", "ppt", "pptx"].contains(ext) { cat = "document" }
+                else { cat = "other" }
+                do {
+                    _ = try await store.api.uploadFileRaw(name: url.lastPathComponent, category: cat, fileURL: url)
+                } catch {
+                    failed.append(url.lastPathComponent)
+                }
+                if access { url.stopAccessingSecurityScopedResource() }
+            }
+            await reload()
+            if !failed.isEmpty { self.error = "Lỗi tải lên: \(failed.joined(separator: ", "))" }
         }
     }
 
     private func download(_ f: FileItem) async {
         do {
-            let d = try await store.api.downloadFile(f.id)
-            guard let data = Data(base64Encoded: d.dataBase64) else { return }
-            exportDoc = ExportableFile(data: data, filename: d.name)
+            let (tempURL, filename) = try await store.api.downloadFileRaw(f.id)
+            let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            let destinationURL = cacheDir.appendingPathComponent(filename)
+            try? FileManager.default.removeItem(at: destinationURL)
+            try FileManager.default.copyItem(at: tempURL, to: destinationURL)
+            exportDoc = ExportableFile(fileURL: destinationURL, filename: filename)
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func previewFile(_ f: FileItem) async {
+        do {
+            let (tempURL, filename) = try await store.api.downloadFileRaw(f.id)
+            let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            let destinationURL = cacheDir.appendingPathComponent(filename)
+            try? FileManager.default.removeItem(at: destinationURL)
+            try FileManager.default.copyItem(at: tempURL, to: destinationURL)
+            self.previewURL = destinationURL
         } catch { self.error = error.localizedDescription }
     }
 
@@ -246,13 +278,13 @@ struct RunResultView: View {
 
 struct ExportableFile: FileDocument {
     static var readableContentTypes: [UTType] { [.data] }
-    var data: Data
+    var fileURL: URL
     var filename: String
-    init(data: Data, filename: String) { self.data = data; self.filename = filename }
+    init(fileURL: URL, filename: String) { self.fileURL = fileURL; self.filename = filename }
     init(configuration: ReadConfiguration) throws {
-        data = configuration.file.regularFileContents ?? Data(); filename = "file"
+        fileURL = URL(fileURLWithPath: ""); filename = ""
     }
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        FileWrapper(regularFileWithContents: data)
+        try FileWrapper(url: fileURL, options: .immediate)
     }
 }
