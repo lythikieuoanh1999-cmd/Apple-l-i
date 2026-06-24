@@ -1,0 +1,13 @@
+# KENIOS backend (kenios.py) — phụ thuộc Python
+# Cài: pip install -r backend/requirements.txt
+fastapi>=0.110
+uvicorn[standard]>=0.29
+httpx>=0.27
+cryptography>=42
+stripe>=8.0
+python-multipart>=0.0.9
+pypdf
+python-docx
+openpyxl
+# Đọc bình luận TikTok Live (tính năng TTS như TikFinity)
+TikTokLive>=6.0

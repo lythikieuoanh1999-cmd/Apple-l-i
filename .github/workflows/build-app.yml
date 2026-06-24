@@ -1,9 +1,20 @@
-name: Build App (via build-app.sh)
+name: Build App (IPA chưa ký)
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ "**" ]
+    paths:
+      - "Sources/**"
+      - "project.yml"
+      - "build-app.sh"
+      - ".github/workflows/build-app.yml"
+  pull_request:
   workflow_dispatch:
+
+# Hủy lần build cũ khi có push mới trên cùng branch
+concurrency:
+  group: build-app-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -13,8 +24,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Cần Xcode 26 (SDK iOS 26) để compile hiệu ứng Liquid Glass (GlassKit.swift)
-      - name: Select latest Xcode (26.x)
+      # Cần Xcode mới (SDK iOS 26) để biên dịch hiệu ứng Liquid Glass (GlassKit.swift)
+      - name: Select latest Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
@@ -24,12 +35,46 @@ jobs:
           xcodebuild -version
           swift --version
 
-      # Toàn bộ logic build (XcodeGen → xcodebuild → đóng gói IPA) nằm trong build-app.sh
-      - name: Run build-app.sh
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
         run: |
           set -eo pipefail
-          chmod +x build-app.sh
-          ./build-app.sh
+          xcodegen generate
+          xcodebuild -list -project KENIOS.xcodeproj
+
+      - name: Build (no code signing)
+        run: |
+          set -eo pipefail
+          xcodebuild \
+            -project KENIOS.xcodeproj \
+            -scheme KENIOS \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            build
+
+      - name: Package into unsigned .ipa
+        run: |
+          set -eo pipefail
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "Không tìm thấy file .app sau khi build."
+            find build/Build/Products -maxdepth 3
+            exit 1
+          fi
+          echo "App: $APP_PATH"
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -r KENIOS.ipa Payload >/dev/null
+          ls -lh KENIOS.ipa
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
