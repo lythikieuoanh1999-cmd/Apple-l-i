@@ -39,6 +39,9 @@ struct MainTabView: View {
             TTSView() // ← THÊM: module đọc văn bản (TTS)
                 .tabItem { Label("Đọc", systemImage: "speaker.wave.2.fill") }
                 .tag(7)
+            MediaWebView() // ← THÊM: xem phim · nghe nhạc qua web
+                .tabItem { Label("Giải trí", systemImage: "play.tv.fill") }
+                .tag(8)
             SettingsView()
                 .tabItem { Label("Cài đặt", systemImage: "gearshape.fill") }
                 .tag(5)

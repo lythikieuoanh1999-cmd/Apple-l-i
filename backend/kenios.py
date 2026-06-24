@@ -2561,6 +2561,149 @@ async def tiktok_stream(b: TikTokStreamIn, user=Depends(get_user)) -> dict[str, 
         raise HTTPException(status_code=400, detail=f"Không thể tạo phòng Live trên TikTok: {e}")
 
 
+# ======================== TikTok Live: đọc bình luận tự động (như TikFinity) ========================
+# Kết nối tới phòng LIVE của một username TikTok và thu các sự kiện (bình luận, quà,
+# follow, share, vào phòng) vào bộ đệm để app lấy về rồi đọc bằng TTS.
+import collections as _collections
+
+_tiktok_live_sessions: dict[str, dict[str, Any]] = {}
+_tiktok_live_lock = asyncio.Lock()
+
+
+def _tt_norm_user(u: str) -> str:
+    u = (u or "").strip()
+    if u.startswith("http"):
+        m = re.search(r"@([\w.\-]+)", u)
+        if m:
+            u = m.group(1)
+        else:
+            u = u.rstrip("/").split("/")[-1]
+    return u.lstrip("@").strip()
+
+
+async def _tiktok_live_runner(username: str) -> None:
+    sess = _tiktok_live_sessions.get(username)
+    if sess is None:
+        return
+    try:
+        from TikTokLive import TikTokLiveClient
+        from TikTokLive.events import (
+            ConnectEvent, CommentEvent, GiftEvent, FollowEvent,
+            ShareEvent, JoinEvent, LiveEndEvent,
+        )
+    except Exception:
+        sess["status"] = "error"
+        sess["error"] = ("Máy chủ chưa cài thư viện TikTokLive. "
+                         "Hãy chạy trên VPS: pip install TikTokLive")
+        return
+
+    def push(etype: str, name: str, content: str = "") -> None:
+        sess["seq"] += 1
+        sess["events"].append({
+            "id": sess["seq"], "type": etype,
+            "name": name or "", "content": content or "",
+        })
+
+    client = TikTokLiveClient(unique_id=f"@{username}")
+    sess["client"] = client
+
+    @client.on(ConnectEvent)
+    async def _on_connect(_e):
+        sess["status"] = "connected"
+
+    @client.on(CommentEvent)
+    async def _on_comment(e):
+        name = getattr(getattr(e, "user", None), "nickname", "") or getattr(getattr(e, "user", None), "unique_id", "")
+        push("comment", name, getattr(e, "comment", ""))
+
+    @client.on(GiftEvent)
+    async def _on_gift(e):
+        g = getattr(e, "gift", None)
+        # quà có streak: chỉ đọc khi chuỗi kết thúc để tránh đọc lặp
+        if g is not None and getattr(g, "streakable", False) and getattr(e, "streaking", False):
+            return
+        name = getattr(getattr(e, "user", None), "nickname", "")
+        push("gift", name, getattr(g, "name", "quà"))
+
+    @client.on(FollowEvent)
+    async def _on_follow(e):
+        push("follow", getattr(getattr(e, "user", None), "nickname", ""))
+
+    @client.on(ShareEvent)
+    async def _on_share(e):
+        push("share", getattr(getattr(e, "user", None), "nickname", ""))
+
+    @client.on(JoinEvent)
+    async def _on_join(e):
+        push("join", getattr(getattr(e, "user", None), "nickname", ""))
+
+    @client.on(LiveEndEvent)
+    async def _on_end(_e):
+        sess["status"] = "ended"
+
+    try:
+        await client.start()
+    except asyncio.CancelledError:
+        pass
+    except Exception as ex:
+        sess["status"] = "error"
+        sess["error"] = f"Không kết nối được LIVE của @{username}: {ex}. (Người dùng phải đang phát trực tiếp.)"
+
+
+class TikTokLiveIn(BaseModel):
+    username: str
+
+
+@app.post("/social/tiktok/live/connect")
+async def tiktok_live_connect(b: TikTokLiveIn, user=Depends(get_user)) -> dict[str, Any]:
+    """Bắt đầu lắng nghe bình luận/quà của một phòng LIVE TikTok."""
+    username = _tt_norm_user(b.username)
+    if not username:
+        raise HTTPException(status_code=400, detail="Thiếu ID / username TikTok.")
+    async with _tiktok_live_lock:
+        sess = _tiktok_live_sessions.get(username)
+        if sess and sess.get("status") in ("connecting", "connected"):
+            return {"ok": True, "status": sess["status"], "username": username}
+        sess = {
+            "events": _collections.deque(maxlen=500),
+            "seq": 0, "status": "connecting", "error": None,
+            "client": None, "task": None,
+        }
+        _tiktok_live_sessions[username] = sess
+        sess["task"] = asyncio.create_task(_tiktok_live_runner(username))
+    return {"ok": True, "status": "connecting", "username": username}
+
+
+@app.get("/social/tiktok/live/events")
+async def tiktok_live_events(username: str, after: int = 0, user=Depends(get_user)) -> dict[str, Any]:
+    """Lấy các sự kiện mới (id > after) để app đọc bằng TTS."""
+    u = _tt_norm_user(username)
+    sess = _tiktok_live_sessions.get(u)
+    if not sess:
+        return {"status": "idle", "error": None, "events": [], "last": after}
+    evs = [e for e in list(sess["events"]) if e["id"] > after]
+    last = evs[-1]["id"] if evs else after
+    return {"status": sess["status"], "error": sess.get("error"), "events": evs, "last": last}
+
+
+@app.post("/social/tiktok/live/disconnect")
+async def tiktok_live_disconnect(b: TikTokLiveIn, user=Depends(get_user)) -> dict[str, Any]:
+    """Ngắt lắng nghe phòng LIVE."""
+    u = _tt_norm_user(b.username)
+    sess = _tiktok_live_sessions.pop(u, None)
+    if sess:
+        client = sess.get("client")
+        if client is not None:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+        task = sess.get("task")
+        if task:
+            task.cancel()
+    return {"ok": True}
+
+
 # ======================== Thanh toán / Credits ========================
 PACKAGES = {
     "pro":   {"credits": 9999,  "amount": 199000, "label": "Gói PRO — 199.000đ (9.999 credits)"},

@@ -430,6 +430,20 @@ struct APIClient {
         return try decode(try await send("/social/stream/tiktok", method: "POST", json: body))
     }
 
+    // ---- TikTok Live: đọc bình luận tự động (như TikFinity) ----
+    func tiktokLiveConnect(username: String) async throws -> TikTokLiveStatus {
+        try decode(try await send("/social/tiktok/live/connect", method: "POST",
+                                  json: ["username": username]))
+    }
+    func tiktokLiveEvents(username: String, after: Int) async throws -> TikTokLiveEventsResponse {
+        let q = username.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? username
+        return try decode(try await send("/social/tiktok/live/events?username=\(q)&after=\(after)"))
+    }
+    func tiktokLiveDisconnect(username: String) async throws {
+        _ = try await send("/social/tiktok/live/disconnect", method: "POST",
+                           json: ["username": username])
+    }
+
     func encryptCode(code: String, language: String, level: String) async throws -> EncryptResponse {
         let body: [String: Any] = ["code": code, "language": language, "level": level]
         return try decode(try await send("/code/encrypt", method: "POST", json: body))

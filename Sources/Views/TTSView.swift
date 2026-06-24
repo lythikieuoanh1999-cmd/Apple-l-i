@@ -78,6 +78,7 @@ private let kLiveEvents: [LiveEventType] = [
 
 // ======================== Giao diện ========================
 struct TTSView: View {
+    @EnvironmentObject var store: AppStore
     @StateObject private var tts = TTSEngine()
 
     @State private var freeText = ""
@@ -85,6 +86,16 @@ struct TTSView: View {
     @State private var content = ""
     @State private var selectedEvent = "gift"
     @State private var search = ""
+
+    // ----- TikTok Live: tự động đọc bình luận (như TikFinity) -----
+    @State private var tiktokId = ""
+    @State private var liveConnected = false
+    @State private var liveStatus = ""
+    @State private var liveError: String?
+    @State private var lastEventId = 0
+    @State private var pollTask: Task<Void, Never>?
+    @State private var readTypes: Set<String> = ["comment", "gift", "follow", "share", "join"]
+    @State private var liveFeed: [TikTokLiveEvent] = []
 
     private var voices: [AVSpeechSynthesisVoice] {
         let all = AVSpeechSynthesisVoice.speechVoices()
@@ -100,6 +111,76 @@ struct TTSView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+
+                    // ----- TikTok Live: tự động đọc bình luận -----
+                    section("TikTok Live — tự động đọc bình luận") {
+                        HStack {
+                            Image(systemName: "music.note.tv.fill").foregroundStyle(.pink)
+                            textField("ID / @username TikTok hoặc link LIVE", $tiktokId)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                        }
+
+                        // Chọn loại sự kiện sẽ đọc
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack {
+                                ForEach(kLiveEvents) { e in
+                                    let on = readTypes.contains(e.id)
+                                    Button {
+                                        if on { readTypes.remove(e.id) } else { readTypes.insert(e.id) }
+                                    } label: {
+                                        Label(e.label, systemImage: on ? "checkmark.circle.fill" : e.icon)
+                                            .font(.caption)
+                                            .padding(.horizontal, 10).padding(.vertical, 7)
+                                            .background(on ? Theme.accent.opacity(0.25) : Color(.secondarySystemBackground))
+                                            .clipShape(Capsule())
+                                    }.buttonStyle(.plain)
+                                }
+                            }
+                        }
+
+                        HStack {
+                            if liveConnected {
+                                Button(role: .destructive) { disconnectLive() } label: {
+                                    Label("Ngắt kết nối", systemImage: "stop.circle.fill").frame(maxWidth: .infinity)
+                                }.buttonStyle(.bordered)
+                            } else {
+                                Button { connectLive() } label: {
+                                    Label("Kết nối & đọc", systemImage: "play.circle.fill").frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(tiktokId.trimmingCharacters(in: .whitespaces).isEmpty)
+                            }
+                        }
+
+                        HStack(spacing: 6) {
+                            Circle().fill(liveStatusColor).frame(width: 8, height: 8)
+                            Text(liveStatusText).font(.caption).foregroundStyle(.secondary)
+                        }
+                        if let liveError {
+                            Text(liveError).font(.caption2).foregroundStyle(.red)
+                        }
+
+                        if !liveFeed.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(liveFeed.suffix(12).reversed()) { ev in
+                                    HStack(alignment: .top, spacing: 6) {
+                                        Image(systemName: kLiveEvents.first { $0.id == ev.type }?.icon ?? "text.bubble")
+                                            .font(.caption2).foregroundStyle(Theme.accent)
+                                        Text(renderLive(ev)).font(.caption2)
+                                        Spacer()
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(8)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+
+                        Text("Nhập ID người đang LIVE → app tự đọc bình luận/quà bằng giọng đã chọn. Tiếp tục đọc khi khoá màn hình.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
 
                     // ----- Thông báo livestream -----
                     section("Thông báo livestream") {
@@ -190,6 +271,83 @@ struct TTSView: View {
             }
             .navigationTitle("Đọc (TTS)")
         }
+    }
+
+    // ----- TikTok Live helpers -----
+    private var liveStatusText: String {
+        if !liveConnected && liveStatus.isEmpty { return "Chưa kết nối" }
+        switch liveStatus {
+        case "connecting": return "Đang kết nối tới phòng LIVE..."
+        case "connected":  return "Đã kết nối · đang đọc bình luận"
+        case "ended":      return "Phiên LIVE đã kết thúc"
+        case "error":      return "Lỗi kết nối"
+        default:           return liveConnected ? "Đang đọc" : "Chưa kết nối"
+        }
+    }
+    private var liveStatusColor: Color {
+        switch liveStatus {
+        case "connected": return .green
+        case "connecting": return .orange
+        case "error", "ended": return .red
+        default: return .gray
+        }
+    }
+
+    private func renderLive(_ ev: TikTokLiveEvent) -> String {
+        let e = kLiveEvents.first { $0.id == ev.type } ?? kLiveEvents[2]
+        let name = ev.name.isEmpty ? "bạn" : ev.name
+        return e.template
+            .replacingOccurrences(of: "{name}", with: name)
+            .replacingOccurrences(of: "{content}", with: ev.content)
+            .trimmingCharacters(in: .whitespaces)
+    }
+
+    private func connectLive() {
+        let id = tiktokId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty else { return }
+        liveError = nil; liveFeed = []; lastEventId = 0
+        liveStatus = "connecting"; liveConnected = true
+        Task {
+            do {
+                let s = try await store.api.tiktokLiveConnect(username: id)
+                liveStatus = s.status
+                startPolling(id)
+            } catch {
+                liveError = error.localizedDescription
+                liveStatus = "error"; liveConnected = false
+            }
+        }
+    }
+
+    private func startPolling(_ id: String) {
+        pollTask?.cancel()
+        pollTask = Task {
+            while !Task.isCancelled {
+                do {
+                    let r = try await store.api.tiktokLiveEvents(username: id, after: lastEventId)
+                    liveStatus = r.status
+                    if let e = r.error { liveError = e }
+                    for ev in r.events {
+                        liveFeed.append(ev)
+                        if readTypes.contains(ev.type) { tts.speak(renderLive(ev)) }
+                    }
+                    if liveFeed.count > 120 { liveFeed.removeFirst(liveFeed.count - 120) }
+                    lastEventId = r.last
+                    if r.status == "ended" || r.status == "error" { break }
+                } catch {
+                    // bỏ qua lỗi mạng tạm thời, thử lại ở vòng sau
+                }
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+            }
+        }
+    }
+
+    private func disconnectLive() {
+        pollTask?.cancel(); pollTask = nil
+        liveConnected = false
+        liveStatus = ""
+        let id = tiktokId.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task { try? await store.api.tiktokLiveDisconnect(username: id) }
     }
 
     // ----- helpers -----

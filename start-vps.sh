@@ -66,7 +66,8 @@ pip install \
     "python-multipart>=0.0.9" \
     "pypdf" \
     "python-docx" \
-    "openpyxl"
+    "openpyxl" \
+    "TikTokLive>=6.0"
 
 # 5. Tạo file .env
 echo "▸ [5/7] Tạo file cấu hình..."

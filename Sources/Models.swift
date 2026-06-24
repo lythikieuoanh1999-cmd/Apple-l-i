@@ -272,6 +272,27 @@ struct StreamKeyResponse: Decodable {
     let title: String?
 }
 
+// TikTok Live (đọc bình luận tự động)
+struct TikTokLiveStatus: Decodable {
+    let ok: Bool?
+    let status: String
+    let username: String?
+}
+
+struct TikTokLiveEvent: Decodable, Identifiable {
+    let id: Int
+    let type: String      // join | gift | comment | follow | share
+    let name: String
+    let content: String
+}
+
+struct TikTokLiveEventsResponse: Decodable {
+    let status: String
+    let error: String?
+    let events: [TikTokLiveEvent]
+    let last: Int
+}
+
 struct EncryptResponse: Decodable {
     let result: String
 }
