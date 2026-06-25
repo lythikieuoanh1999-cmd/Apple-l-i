@@ -491,6 +491,17 @@ struct APIClient {
                                   json: ["text": text, "target": target, "source": source]))
     }
 
+    // ---- KENIOS AI: cấp API key cho người khác ----
+    func apiTokenCreate(name: String) async throws -> ApiTokenCreateResponse {
+        try decode(try await send("/apitokens/create", method: "POST", json: ["name": name]))
+    }
+    func apiTokenList() async throws -> ApiTokenListResponse {
+        try decode(try await send("/apitokens"))
+    }
+    func apiTokenDelete(token: String) async throws {
+        _ = try await send("/apitokens/\(token)", method: "DELETE")
+    }
+
     // ---- KenMail (email tích hợp tài khoản + mật khẩu) ----
     func mailCreate(local: String, password: String) async throws -> MailboxCreateResponse {
         try decode(try await send("/mail/create", method: "POST",

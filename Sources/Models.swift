@@ -336,6 +336,17 @@ struct MailInboxResponse: Decodable {
     let mails: [MailItem]
 }
 
+// KENIOS AI — API key cấp cho người khác
+struct ApiTokenCreateResponse: Decodable { let token: String }
+struct ApiTokenItem: Decodable, Identifiable {
+    var id: String { token }
+    let token: String
+    let name: String?
+    let calls: Int?
+    let createdAt: Int?
+}
+struct ApiTokenListResponse: Decodable { let tokens: [ApiTokenItem] }
+
 // OTP — mã xác nhận email
 struct OtpSendResponse: Decodable {
     let sent: Bool

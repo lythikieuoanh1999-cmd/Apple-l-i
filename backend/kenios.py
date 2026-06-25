@@ -60,6 +60,12 @@ SMTP_RELAY_USER = os.getenv("SMTP_RELAY_USER", "")
 SMTP_RELAY_PASS = os.getenv("SMTP_RELAY_PASS", "")
 OTP_DEBUG       = os.getenv("OTP_DEBUG", "0") == "1"        # trả mã trong response để test khi chưa có mail
 
+# ----- KENIOS AI: model tự host của riêng bạn (không dùng API key của ai) -----
+KENIOS_AI_ENABLE = os.getenv("KENIOS_AI_ENABLE", "1") == "1"
+KENIOS_AI_BASE   = os.getenv("KENIOS_AI_BASE", "http://127.0.0.1:11434/v1")  # Ollama (OpenAI-compatible)
+KENIOS_AI_MODEL  = os.getenv("KENIOS_AI_MODEL", "llama3.1")
+KENIOS_AI_KEY    = os.getenv("KENIOS_AI_KEY", "ollama")   # Ollama bỏ qua, chỉ cần khác rỗng
+
 # Thư mục lưu tệp tải lên của user trên đĩa
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -91,6 +97,15 @@ def dec(token: str) -> str: return fernet.decrypt(token.encode()).decode()
 
 # ===================== Danh sách AI (models mới nhất 2025) =====================
 PROVIDERS: dict[str, dict[str, Any]] = {
+    "kenios": {
+        "label": "KENIOS AI · của bạn (miễn phí, không cần key)",
+        "kind": "openai",
+        "base": KENIOS_AI_BASE,
+        "default_model": KENIOS_AI_MODEL,
+        "models": [KENIOS_AI_MODEL],
+        "vision": False, "free": True,
+        "code": True,
+    },
     "openai": {
         "label": "OpenAI · GPT-4o & o3",
         "kind": "openai",
@@ -332,6 +347,13 @@ def init_db() -> None:
                 purpose TEXT DEFAULT 'register',
                 exp INTEGER NOT NULL,
                 attempts INTEGER DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS api_tokens(
+                token TEXT PRIMARY KEY,
+                owner_uid INTEGER,
+                name TEXT,
+                calls INTEGER DEFAULT 0,
+                created_at INTEGER
             );
             CREATE TABLE IF NOT EXISTS conversations(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -730,6 +752,9 @@ async def post_with_retry(
 
 
 def get_user_key(user_id: int, provider: str, inline: Optional[str]) -> str:
+    # KENIOS AI tự host: không cần API key của người dùng
+    if provider == "kenios":
+        return KENIOS_AI_KEY or "ollama"
     if inline:
         return inline
     with db() as c:
@@ -1248,12 +1273,66 @@ def _providers_public() -> list[dict[str, Any]]:
          "default_model": v["default_model"], "vision": v["vision"],
          "free": v["free"], "code": v.get("code", False)}
         for k, v in PROVIDERS.items()
+        if not (k == "kenios" and not KENIOS_AI_ENABLE)
     ]
 
 
 @app.get("/providers")
 def providers_list() -> list[dict[str, Any]]:
     return _providers_public()
+
+
+# ======================== KENIOS AI — cấp API key cho người khác dùng ké ========================
+class ApiTokenIn(BaseModel):
+    name: str = ""
+
+
+@app.post("/apitokens/create")
+def apitoken_create(b: ApiTokenIn, user=Depends(get_user)) -> dict[str, Any]:
+    token = "ken-" + secrets.token_urlsafe(24)
+    with db() as c:
+        c.execute("INSERT INTO api_tokens(token,owner_uid,name,calls,created_at) VALUES(?,?,?,0,?)",
+                  (token, user["id"], (b.name or "Khoá API").strip()[:60], int(time.time())))
+    return {"token": token}
+
+
+@app.get("/apitokens")
+def apitoken_list(user=Depends(get_user)) -> dict[str, Any]:
+    with db() as c:
+        rows = c.execute("SELECT token,name,calls,created_at FROM api_tokens "
+                         "WHERE owner_uid=? ORDER BY created_at DESC", (user["id"],)).fetchall()
+    return {"tokens": [dict(r) for r in rows]}
+
+
+@app.delete("/apitokens/{token}")
+def apitoken_delete(token: str, user=Depends(get_user)) -> dict[str, Any]:
+    with db() as c:
+        c.execute("DELETE FROM api_tokens WHERE token=? AND owner_uid=?", (token, user["id"]))
+    return {"ok": True}
+
+
+class PublicChatIn(BaseModel):
+    token: str
+    message: str
+    model: Optional[str] = None
+    system: Optional[str] = None
+
+
+@app.post("/v1/kenios/chat")
+async def public_kenios_chat(b: PublicChatIn) -> dict[str, Any]:
+    """API công khai: người khác dùng API key của bạn để gọi KENIOS AI (model tự host)."""
+    if not (b.message or "").strip():
+        raise HTTPException(status_code=400, detail="Thiếu 'message'.")
+    with db() as c:
+        row = c.execute("SELECT owner_uid FROM api_tokens WHERE token=?", (b.token,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=401, detail="API key không hợp lệ.")
+        c.execute("UPDATE api_tokens SET calls=calls+1 WHERE token=?", (b.token,))
+    if not KENIOS_AI_ENABLE:
+        raise HTTPException(status_code=503, detail="KENIOS AI chưa được bật trên máy chủ.")
+    reply = await call_provider("kenios", KENIOS_AI_KEY or "ollama", b.model, [],
+                                b.message, system_override=b.system)
+    return {"reply": reply, "model": b.model or KENIOS_AI_MODEL}
 
 
 # ======================== Auth ========================

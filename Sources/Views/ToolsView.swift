@@ -74,6 +74,9 @@ struct ToolsView: View {
                     NavigationLink { AssistantView() } label: {
                         Label("Trợ lý rảnh tay (giọng nói + streaming)", systemImage: "waveform.circle.fill")
                     }
+                    NavigationLink { ApiKeysView() } label: {
+                        Label("KENIOS AI — cấp API key", systemImage: "key.horizontal.fill")
+                    }
                 }
                 Section("Bảo mật") {
                     NavigationLink { AuthenticatorView() } label: {
