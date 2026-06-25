@@ -689,6 +689,10 @@ struct TTSView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
 
+                    KHeroHeader(icon: "speaker.wave.2.fill",
+                                title: "Đọc văn bản",
+                                subtitle: "TTS · đọc bình luận TikTok Live · chạy nền")
+
                     // ----- TikTok Live: tự động đọc bình luận -----
                     section("TikTok Live — tự động đọc bình luận") {
                         HStack {

@@ -3,13 +3,19 @@ import UniformTypeIdentifiers
 import QuickLook
 
 struct LibraryView: View {
-    @State private var seg = 0
+    @State private var seg = 1
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                KHeroHeader(icon: "clock.arrow.circlepath",
+                            title: "Thư viện",
+                            subtitle: "Video đã tải · File · Lịch sử nội dung")
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+
                 Picker("", selection: $seg) {
-                    Text("Lịch sử").tag(0)
                     Text("File").tag(1)
+                    Text("Lịch sử").tag(0)
                 }
                 .pickerStyle(.segmented).padding()
                 if seg == 0 { HistoryPane() } else { FilesPane() }
