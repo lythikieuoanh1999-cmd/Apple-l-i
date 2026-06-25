@@ -44,6 +44,13 @@ struct KenMailView: View {
     @AppStorage("kenmail_dns_records") private var dnsRaw = ""
     @State private var dnsRecords: [DnsRecord] = []
 
+    // Email clone (alias / catch-all) — nhiều địa chỉ đổ về 1 hộp thư gốc
+    @State private var showAlias = false
+    @AppStorage("kenmail_alias_base") private var aliasBase = ""
+    @State private var aliasCount = "10"
+    @State private var aliasPrefix = ""
+    @State private var aliasResults: [String] = []
+
     // Tạo hàng loạt ngẫu nhiên
     @State private var showBulk = false
     @State private var bulkCount = "10"
@@ -80,6 +87,7 @@ struct KenMailView: View {
                     Menu {
                         Button { selectedDomain = ""; showCreate = true } label: { Label("Tạo 1 hộp thư", systemImage: "plus") }
                         Button { selectedDomain = ""; showBulk = true } label: { Label("Tạo nhiều ngẫu nhiên", systemImage: "rectangle.stack.badge.plus") }
+                        Button { showAlias = true } label: { Label("Email clone (alias → 1 hộp thư)", systemImage: "arrow.triangle.branch") }
                         Button { showManageDomains = true } label: { Label("Quản lý tên miền", systemImage: "globe") }
                         Divider()
                         if let u = URL(string: inetURL) {
@@ -104,6 +112,7 @@ struct KenMailView: View {
             .sheet(isPresented: $showBulk) { bulkCreateSheet }
             .sheet(isPresented: $showManageDomains) { manageDomainsSheet }
             .sheet(isPresented: $showSettings) { settingsSheet }
+            .sheet(isPresented: $showAlias) { aliasSheet }
             .sheet(isPresented: $showCompose) { composeSheet }
             .sheet(isPresented: $showBulkResults) { bulkResultSheet }
             .sheet(item: $openMail) { m in mailDetail(m) }
@@ -111,6 +120,70 @@ struct KenMailView: View {
                 Button("OK") { error = nil }
             } message: { Text(error ?? "") }
         }
+    }
+
+    // MARK: - Email clone (alias → đổ về 1 hộp thư gốc qua catch-all)
+    private var aliasSheet: some View {
+        NavigationStack {
+            Form {
+                Section("Hộp thư gốc (nhận tất cả)") {
+                    TextField("vd: main@\(domain)", text: $aliasBase)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .keyboardType(.emailAddress)
+                    Text("Tất cả email alias bên dưới sẽ đổ về hộp thư gốc này (nhờ catch-all trên iNET).")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+                Section("Tạo alias") {
+                    HStack {
+                        TextField("Số lượng", text: $aliasCount).keyboardType(.numberPad).frame(width: 90)
+                        Divider()
+                        TextField("Tiền tố (tuỳ chọn)", text: $aliasPrefix)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    }
+                    Button {
+                        generateAlias()
+                    } label: { Label("Tạo \(aliasCount) email clone", systemImage: "wand.and.stars") }
+                }
+                if !aliasResults.isEmpty {
+                    Section("Kết quả (\(aliasResults.count)) — bấm copy") {
+                        Button {
+                            UIPasteboard.general.string = aliasResults.joined(separator: "\n")
+                        } label: { Label("Copy tất cả", systemImage: "doc.on.doc.fill") }
+                        ForEach(aliasResults, id: \.self) { a in
+                            HStack {
+                                Text(a).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                                Spacer()
+                                Button { UIPasteboard.general.string = a } label: {
+                                    Image(systemName: "doc.on.doc").font(.caption2)
+                                }.buttonStyle(.borderless)
+                            }
+                        }
+                    }
+                }
+                Section("Cách hoạt động") {
+                    Text("""
+                    1) Trên iNET: bật CATCH-ALL cho \(domain) → trỏ về hộp thư gốc ở trên.
+                    2) Mỗi alias là một email khác nhau (vd ab12cd@\(domain)) dùng đăng ký Apple ID/dịch vụ.
+                    3) Mọi thư & mã xác nhận của các alias đều về CHUNG hộp thư gốc → không cần đăng nhập từng tài khoản.
+                    """).font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Email clone (alias)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Đóng") { showAlias = false } } }
+        }
+    }
+
+    private func generateAlias() {
+        let n = max(1, min(Int(aliasCount) ?? 10, 100))
+        let pfx = aliasPrefix.lowercased().filter { "abcdefghijklmnopqrstuvwxyz0123456789._-".contains($0) }
+        let chars = Array("abcdefghijklmnopqrstuvwxyz0123456789")
+        var out: [String] = []
+        for _ in 0..<n {
+            let rand = String((0..<6).map { _ in chars.randomElement()! })
+            out.append("\(pfx)\(rand)@\(domain)")
+        }
+        aliasResults = out
     }
 
     // MARK: - Cài đặt KenMail (link tạo email)
