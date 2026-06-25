@@ -55,28 +55,31 @@ struct LoginView: View {
                             .overlay(RoundedRectangle(cornerRadius: 14).stroke(.secondary.opacity(0.4)))
                     }.padding(.horizontal)
 
-                    if store.baseURL.isEmpty {
-                        NavigationLink { ServerSetupView() } label: {
-                            HStack {
-                                Image(systemName: "globe").foregroundStyle(.orange)
-                                Text("Chưa có máy chủ — bấm để kết nối").font(.caption)
+                    // Ẩn hoàn toàn phần liên kết máy chủ khi đã cài sẵn URL mặc định (Config.defaultServerURL)
+                    if Config.defaultServerURL.isEmpty {
+                        if store.baseURL.isEmpty {
+                            NavigationLink { ServerSetupView() } label: {
+                                HStack {
+                                    Image(systemName: "globe").foregroundStyle(.orange)
+                                    Text("Chưa có máy chủ — bấm để kết nối").font(.caption)
+                                }
+                                .padding().frame(maxWidth: .infinity)
+                                .background(Color(.secondarySystemBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }.padding(.horizontal)
+                        } else {
+                            HStack(spacing: 8) {
+                                Image(systemName: "globe").foregroundStyle(Theme.accent)
+                                VStack(alignment: .leading) {
+                                    Text("Máy chủ \(store.serverType)").font(.caption).foregroundStyle(.secondary)
+                                    Text(store.baseURL).font(.caption).foregroundStyle(Theme.accent).lineLimit(1)
+                                }
+                                Spacer()
+                                Button("Đổi") { showConnections = true }.font(.caption)
                             }
-                            .padding().frame(maxWidth: .infinity)
-                            .background(Color(.secondarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                        }.padding(.horizontal)
-                    } else {
-                        HStack(spacing: 8) {
-                            Image(systemName: "globe").foregroundStyle(Theme.accent)
-                            VStack(alignment: .leading) {
-                                Text("Máy chủ \(store.serverType)").font(.caption).foregroundStyle(.secondary)
-                                Text(store.baseURL).font(.caption).foregroundStyle(Theme.accent).lineLimit(1)
-                            }
-                            Spacer()
-                            Button("Đổi") { showConnections = true }.font(.caption)
+                            .padding().background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 12)).padding(.horizontal)
                         }
-                        .padding().background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 12)).padding(.horizontal)
                     }
                 }
             }

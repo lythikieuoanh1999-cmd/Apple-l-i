@@ -16,48 +16,21 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // API KEYS
-                Section {
-                    ForEach(store.providers) { p in
-                        Button { keyProvider = p } label: {
-                            HStack {
-                                Circle().fill(providerColor(p.id)).frame(width: 10, height: 10)
-                                Text(p.label.components(separatedBy: " · ").first ?? p.id)
-                                    .foregroundStyle(.primary)
-                                if p.free {
-                                    Text("Free").font(.caption2)
-                                        .padding(.horizontal, 6).padding(.vertical, 2)
-                                        .background(Color.green.opacity(0.2)).foregroundStyle(.green)
-                                        .clipShape(Capsule())
-                                }
-                                Spacer()
-                                if store.configuredKeys.contains(p.id) {
-                                    Image(systemName: "checkmark").foregroundStyle(.green)
-                                } else {
-                                    Text("Chưa có").font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
+                // SERVER — chỉ hiện khi CHƯA cài sẵn máy chủ mặc định (Config.defaultServerURL)
+                if Config.defaultServerURL.isEmpty {
+                    Section("Kết nối máy chủ (\(store.serverType))") {
+                        LabeledContent("URL / IP", value: store.baseURL)
+                        HStack {
+                            Text("Trạng thái")
+                            Spacer()
+                            if let connected {
+                                Circle().fill(connected ? .green : .red).frame(width: 8, height: 8)
+                                Text(connected ? "Đang kết nối" : "Mất kết nối")
+                                    .foregroundStyle(connected ? .green : .red)
+                            } else { ProgressView() }
                         }
+                        Button("Quản lý máy chủ (VPS / Hosting)") { showConnections = true }
                     }
-                } header: {
-                    Text("API Keys")
-                } footer: {
-                    Text("Key được mã hóa (Fernet) khi lưu trên máy chủ. AI có key sẽ hiện ra để chọn khi chat.")
-                }
-
-                // SERVER
-                Section("Kết nối máy chủ (\(store.serverType))") {
-                    LabeledContent("URL / IP", value: store.baseURL)
-                    HStack {
-                        Text("Trạng thái")
-                        Spacer()
-                        if let connected {
-                            Circle().fill(connected ? .green : .red).frame(width: 8, height: 8)
-                            Text(connected ? "Đang kết nối" : "Mất kết nối")
-                                .foregroundStyle(connected ? .green : .red)
-                        } else { ProgressView() }
-                    }
-                    Button("Quản lý máy chủ (VPS / Hosting)") { showConnections = true }
                 }
 
                 // ACCOUNT
