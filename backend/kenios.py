@@ -645,8 +645,10 @@ def _raise_for_provider(r: httpx.Response, provider: str) -> None:
                    f"Vui lòng chọn model khác. Chi tiết: {txt}")
     if r.status_code == 429:
         raise HTTPException(status_code=429,
-            detail=f"{provider}: Vượt quá giới hạn tốc độ (429). "
-                   f"Vui lòng đợi vài giây rồi thử lại.")
+            detail=f"{provider}: Vượt quá giới hạn tốc độ miễn phí (429). Hệ thống đã tự thử lại "
+                   f"nhưng vẫn bị chặn. Cách khắc phục: (1) đợi ~30–60 giây rồi gửi lại; "
+                   f"(2) đổi sang AI free khác như Groq hoặc OpenRouter; "
+                   f"(3) đổi model nhẹ hơn (vd Gemini 2.0 Flash); hoặc (4) dùng API key trả phí của bạn.")
     raise HTTPException(status_code=502,
         detail=f"{provider} lỗi {r.status_code}: {txt}")
 

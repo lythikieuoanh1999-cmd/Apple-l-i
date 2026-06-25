@@ -40,6 +40,8 @@ struct ThreeDLogoText: View {
                 .shadow(color: Theme.accent.opacity(0.6), radius: 3, x: 0, y: 2)
                 .shadow(color: Theme.purple.opacity(0.3), radius: 6, x: 0, y: 4)
         }
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)   // không để thanh điều hướng cắt thành "K..."
     }
 }
 

@@ -42,6 +42,9 @@ struct MainTabView: View {
             MediaWebView() // ← THÊM: xem phim · nghe nhạc qua web
                 .tabItem { Label("Giải trí", systemImage: "play.tv.fill") }
                 .tag(8)
+            WindowsSimView() // ← THÊM: Windows giả lập (mô phỏng giao diện)
+                .tabItem { Label("Windows", systemImage: "macwindow") }
+                .tag(9)
             SettingsView()
                 .tabItem { Label("Cài đặt", systemImage: "gearshape.fill") }
                 .tag(5)

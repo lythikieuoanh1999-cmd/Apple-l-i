@@ -43,6 +43,7 @@ struct ChatView: View {
 
     // PhotosPicker – multiple selection
     @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var showPhotosPicker = false
 
     // File importer
     @State private var showFileImporter = false
@@ -116,6 +117,8 @@ struct ChatView: View {
             .onAppear { if provider.isEmpty { setDefaultProvider() }; load() }
             .onChange(of: store.activeConversation) { _ in load() }
             .onChange(of: selectedPhotos) { newItems in loadPhotos(newItems) }
+            .photosPicker(isPresented: $showPhotosPicker, selection: $selectedPhotos,
+                          maxSelectionCount: 30, matching: .images)
             .fileImporter(
                 isPresented: $showFileImporter,
                 allowedContentTypes: kAllowedTypes,
@@ -130,13 +133,25 @@ struct ChatView: View {
     // MARK: - Toolbar Menu (Share & Export)
     private var toolbarMenu: some View {
         Menu {
+            Button { newChat() } label: {
+                Label("Hội thoại mới", systemImage: "square.and.pencil")
+            }
+            Button {
+                Task { await store.refreshPrompts() }
+                showPromptSheet = true
+            } label: {
+                Label("Prompt mẫu", systemImage: "text.badge.star")
+            }
+            Button { showAISheet = true } label: {
+                Label("Chọn AI", systemImage: "cpu")
+            }
             if conversationId != nil {
+                Divider()
                 Button {
                     Task { await shareConversation() }
                 } label: {
                     Label("Chia sẻ hội thoại", systemImage: "square.and.arrow.up")
                 }
-
                 Button {
                     Task { await exportMarkdown() }
                 } label: {
@@ -309,8 +324,12 @@ struct ChatView: View {
                     Label("Vẽ ảnh AI (Palette)", systemImage: "paintbrush")
                 }
 
-                // Ảnh từ thư viện (tối đa 30)
-                photosPickerMenuItem
+                // Ảnh từ thư viện (tối đa 30) — mở picker bằng state cho ổn định
+                Button {
+                    showPhotosPicker = true
+                } label: {
+                    Label("Ảnh (tối đa 30)", systemImage: "photo")
+                }
             } label: {
                 Image(systemName: "plus").font(.title3.bold())
                     .frame(width: 34, height: 34)
@@ -374,14 +393,6 @@ struct ChatView: View {
                                    && selectedServerFiles.isEmpty))
         }
         .padding(.horizontal).padding(.vertical, 8)
-    }
-
-    // Isolated PhotosPicker as a menu item (multiple selection, up to 30)
-    @ViewBuilder
-    private var photosPickerMenuItem: some View {
-        PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 30, matching: .images) {
-            Label("Ảnh (tối đa 30)", systemImage: "photo")
-        }
     }
 
     // MARK: - Helpers
