@@ -1,10 +1,10 @@
 import SwiftUI
 
-// ======================== CenMail — Email tạm (mail.cenios.net) ========================
-// Nhúng dịch vụ email tạm/clone của bạn (domain cenios.net) ngay trong app.
+// ======================== CenMail — Email tạm (mail.kenios.store) ========================
+// Nhúng dịch vụ email tạm/clone của bạn (domain kenios.store) ngay trong app.
 struct CenMailView: View {
     @StateObject private var model = BrowserModel()
-    private let home = "https://mail.cenios.net"
+    private let home = "https://mail.kenios.store"
 
     var body: some View {
         NavigationStack {
