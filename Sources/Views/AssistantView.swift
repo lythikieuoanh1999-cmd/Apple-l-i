@@ -65,9 +65,10 @@ struct AssistantView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             if provider.isEmpty {
-                provider = store.configuredKeys.first
-                    ?? store.providers.first(where: { $0.free })?.id
-                    ?? store.providers.first?.id ?? "gemini"
+                provider = store.providers.contains(where: { $0.id == "kenios" }) ? "kenios"
+                    : (store.configuredKeys.first
+                        ?? store.providers.first(where: { $0.free })?.id
+                        ?? store.providers.first?.id ?? "gemini")
             }
         }
     }

@@ -403,6 +403,8 @@ struct ChatView: View {
         store.providers.first(where: { $0.id == id })?.free ?? false
     }
     private func setDefaultProvider() {
+        // Ưu tiên KENIOS AI (của bạn) làm mặc định
+        if store.providers.contains(where: { $0.id == "kenios" }) { provider = "kenios"; return }
         provider = store.configuredKeys.first
             ?? store.providers.first(where: { $0.free })?.id
             ?? store.providers.first?.id ?? "gemini"

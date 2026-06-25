@@ -122,8 +122,18 @@ final class AppStore: ObservableObject {
         d.set(false, forKey: "isAdmin")
     }
 
-    func loadProviders() async { if let l = try? await api.getProviders() { providers = l } }
-    func loadKeys() async { if let l = try? await api.listKeys() { configuredKeys = Set(l.map { $0.provider }) } }
+    func loadProviders() async {
+        if let l = try? await api.getProviders() { providers = l }
+        // KENIOS AI tự host: không cần key → luôn coi là đã cấu hình
+        if providers.contains(where: { $0.id == "kenios" }) { configuredKeys.insert("kenios") }
+    }
+    func loadKeys() async {
+        if let l = try? await api.listKeys() {
+            var s = Set(l.map { $0.provider })
+            if providers.contains(where: { $0.id == "kenios" }) { s.insert("kenios") }
+            configuredKeys = s
+        }
+    }
     func refreshConversations() async { if let l = try? await api.conversations() { conversations = l } }
     func openConversation(_ c: Conversation?) { activeConversation = c; tab = 0 }
 
