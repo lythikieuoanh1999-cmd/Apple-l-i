@@ -28,6 +28,11 @@ struct KenMailView: View {
 
     @State private var openMail: MailItem?
 
+    // Cài đặt KenMail: link tạo email (iNET) + webmail (sửa được, lưu lại)
+    @State private var showSettings = false
+    @AppStorage("kenmail_inet_url") private var inetURL = "https://portal.inet.vn"
+    @AppStorage("kenmail_webmail_url") private var webmailURL = "https://mail.kenios.store"
+
     // Tạo hàng loạt ngẫu nhiên
     @State private var showBulk = false
     @State private var bulkCount = "10"
@@ -66,12 +71,13 @@ struct KenMailView: View {
                         Button { selectedDomain = ""; showBulk = true } label: { Label("Tạo nhiều ngẫu nhiên", systemImage: "rectangle.stack.badge.plus") }
                         Button { showManageDomains = true } label: { Label("Quản lý tên miền", systemImage: "globe") }
                         Divider()
-                        Link(destination: URL(string: "https://portal.inet.vn")!) {
-                            Label("Tạo email trên iNET", systemImage: "link")
+                        if let u = URL(string: inetURL) {
+                            Link(destination: u) { Label("Tạo email trên iNET", systemImage: "link") }
                         }
-                        Link(destination: URL(string: "https://mail.kenios.store")!) {
-                            Label("Webmail kenios.store", systemImage: "envelope.circle")
+                        if let u = URL(string: webmailURL) {
+                            Link(destination: u) { Label("Mở Webmail", systemImage: "envelope.circle") }
                         }
+                        Button { showSettings = true } label: { Label("Cài đặt KenMail", systemImage: "gearshape") }
                         if !mailboxes.isEmpty {
                             let listText = mailboxes.map { $0.address }.joined(separator: "\n")
                             ShareLink(item: listText, preview: SharePreview("danh_sach_mailbox.txt", image: Image(systemName: "envelope"))) {
@@ -86,12 +92,54 @@ struct KenMailView: View {
             .sheet(isPresented: $showCreate) { createBoxSheet }
             .sheet(isPresented: $showBulk) { bulkCreateSheet }
             .sheet(isPresented: $showManageDomains) { manageDomainsSheet }
+            .sheet(isPresented: $showSettings) { settingsSheet }
             .sheet(isPresented: $showCompose) { composeSheet }
             .sheet(isPresented: $showBulkResults) { bulkResultSheet }
             .sheet(item: $openMail) { m in mailDetail(m) }
             .alert("Lỗi", isPresented: .constant(error != nil)) {
                 Button("OK") { error = nil }
             } message: { Text(error ?? "") }
+        }
+    }
+
+    // MARK: - Cài đặt KenMail (link tạo email)
+    private var settingsSheet: some View {
+        NavigationStack {
+            Form {
+                Section("Liên kết tạo email") {
+                    if let u = URL(string: inetURL) {
+                        Link(destination: u) { Label("Mở trang tạo email (iNET)", systemImage: "link") }
+                    }
+                    if let u = URL(string: webmailURL) {
+                        Link(destination: u) { Label("Mở Webmail", systemImage: "envelope.circle") }
+                    }
+                }
+                Section("Chỉnh liên kết") {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Trang tạo / quản lý email").font(.caption).foregroundStyle(.secondary)
+                        TextField("https://portal.inet.vn", text: $inetURL)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled()
+                            .keyboardType(.URL)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Webmail").font(.caption).foregroundStyle(.secondary)
+                        TextField("https://mail.kenios.store", text: $webmailURL)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled()
+                            .keyboardType(.URL)
+                    }
+                    Button("Đặt lại mặc định") {
+                        inetURL = "https://portal.inet.vn"
+                        webmailURL = "https://mail.kenios.store"
+                    }.font(.caption)
+                }
+                Section {
+                    Text("Mở trang iNET để tạo email tên miền @kenios.store. Cần thêm bản ghi DNS (MX/A/SPF/DKIM) và verify trên iNET trước khi tạo tài khoản.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Cài đặt KenMail")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Xong") { showSettings = false } } }
         }
     }
 
