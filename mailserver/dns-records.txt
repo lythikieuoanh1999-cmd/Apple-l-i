@@ -1,0 +1,37 @@
+============================================================
+ DNS records cần thêm cho kenios.store (thay <IP_VPS> = IP máy chủ)
+ Thêm tại trang quản lý tên miền (nơi bạn mua/đang quản lý DNS).
+============================================================
+
+# 1) Trỏ hostname mail về VPS
+Type: A      Name: mail            Value: <IP_VPS>            TTL: 3600
+# (tuỳ chọn IPv6)
+Type: AAAA   Name: mail            Value: <IPv6_VPS>         TTL: 3600
+
+# 2) MX — nơi nhận thư của @kenios.store
+Type: MX     Name: @ (kenios.store) Value: mail.kenios.store  Priority: 10
+
+# 3) SPF — chống giả mạo người gửi
+Type: TXT    Name: @ (kenios.store) Value: "v=spf1 mx a:mail.kenios.store ~all"
+
+# 4) DMARC
+Type: TXT    Name: _dmarc           Value: "v=DMARC1; p=quarantine; rua=mailto:postmaster@kenios.store; adkim=s; aspf=s"
+
+# 5) DKIM — LẤY TỪ Mailcow sau khi cài:
+#    Admin → Configuration → ARC/DKIM keys → chọn domain kenios.store → copy chuỗi.
+#    Thường có dạng:
+Type: TXT    Name: dkim._domainkey  Value: "v=DKIM1;k=rsa;t=s;s=email;p=<KHOÁ_DKIM_DÀI>"
+
+# 6) Autodiscover / Autoconfig (tuỳ chọn — giúp app mail tự cấu hình)
+Type: CNAME  Name: autodiscover     Value: mail.kenios.store
+Type: CNAME  Name: autoconfig       Value: mail.kenios.store
+
+# 7) rDNS / PTR (RẤT QUAN TRỌNG để không bị vào spam)
+#    KHÔNG đặt ở DNS tên miền — đặt ở trang quản lý VPS của nhà cung cấp:
+#    PTR của <IP_VPS>  ->  mail.kenios.store
+
+------------------------------------------------------------
+ Kiểm tra sau khi cấu hình:
+   - https://mxtoolbox.com  (kiểm tra MX, SPF, DKIM, DMARC, blacklist)
+   - Gửi thử tới  check-auth@verifier.port25.com  để xem báo cáo SPF/DKIM/DMARC
+------------------------------------------------------------
