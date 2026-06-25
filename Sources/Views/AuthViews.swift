@@ -14,13 +14,26 @@ struct LoginView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     ZStack {
-                        Circle().fill(Theme.heroGradient).frame(width: 110, height: 110)
-                            .shadow(color: Theme.accent.opacity(0.5), radius: 18, y: 8)
-                        Image(systemName: "bolt.horizontal.circle.fill")
-                            .font(.system(size: 54, weight: .bold)).foregroundStyle(.white)
+                        RoundedRectangle(cornerRadius: 30, style: .continuous)
+                            .fill(Theme.heroGradient)
+                            .frame(width: 116, height: 116)
+                            .shadow(color: Theme.purple.opacity(0.55), radius: 26, y: 12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 30, style: .continuous)
+                                    .stroke(LinearGradient(colors: [.white.opacity(0.5), .clear],
+                                                           startPoint: .topLeading, endPoint: .bottomTrailing),
+                                            lineWidth: 1.5)
+                            )
+                        Text("K")
+                            .font(.system(size: 66, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
                     }
-                    .padding(.top, 48)
-                    ThreeDLogoText(size: 34)
+                    .padding(.top, 52)
+
+                    Text("KENIOS")
+                        .font(.system(size: 36, weight: .black, design: .rounded))
+                        .foregroundStyle(Theme.buttonGradient)
                     Text("Mạng xã hội · Video · Live · Tiện ích")
                         .font(.subheadline).foregroundStyle(.secondary)
 
