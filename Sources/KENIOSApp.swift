@@ -24,6 +24,16 @@ struct KENIOSApp: App {
         UINavigationBar.appearance().standardAppearance = nav
         UINavigationBar.appearance().scrollEdgeAppearance = nav
         UINavigationBar.appearance().compactAppearance = nav
+
+        // Nền đen cho MỌI danh sách/Form trên toàn app (đồng bộ kiểu Instagram)
+        UITableView.appearance().backgroundColor = black
+        UICollectionView.appearance().backgroundColor = black
+
+        // Thanh công cụ bàn phím / toolbar tối
+        let bar = UIToolbarAppearance()
+        bar.configureWithOpaqueBackground()
+        bar.backgroundColor = black
+        UIToolbar.appearance().standardAppearance = bar
     }
 
     var body: some Scene {
