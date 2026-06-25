@@ -53,9 +53,8 @@ struct MainTabView: View {
         }
         .onAppear { if store.tab == 0 || store.tab == 1 || store.tab == 10 { store.tab = 2 } }
         .task {
+            // Giảm tải khởi động (đã bỏ Chat/AI key) → đỡ "đứng" khi mở app
             await store.loadProviders()
-            await store.loadKeys()
-            await store.refreshConversations()
             await store.refreshCredits()
         }
     }

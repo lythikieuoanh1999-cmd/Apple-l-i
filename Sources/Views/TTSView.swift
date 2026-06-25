@@ -664,9 +664,14 @@ struct TTSView: View {
     @State private var templateFollow = UserDefaults.standard.string(forKey: "tts_event_template_follow") ?? "Cảm ơn {name} đã theo dõi"
     @State private var templateShare = UserDefaults.standard.string(forKey: "tts_event_template_share") ?? "Cảm ơn {name} đã chia sẻ live"
 
+    // Cache danh sách giọng 1 lần khi mở app (speechVoices() rất nặng — tránh gọi mỗi lần render gây lag/đứng)
+    private static let cachedVoices: [AVSpeechSynthesisVoice] =
+        AVSpeechSynthesisVoice.speechVoices().sorted { ($0.language, $0.name) < ($1.language, $1.name) }
+    private static let cachedVietnameseCount: Int =
+        cachedVoices.filter { $0.language.hasPrefix("vi") }.count
+
     private var voices: [AVSpeechSynthesisVoice] {
-        var all = AVSpeechSynthesisVoice.speechVoices()
-            .sorted { ($0.language, $0.name) < ($1.language, $1.name) }
+        var all = Self.cachedVoices
         if onlyVietnameseVoices {
             all = all.filter { $0.language.hasPrefix("vi") }
         }
@@ -677,9 +682,7 @@ struct TTSView: View {
         }
     }
 
-    private var vietnameseVoiceCount: Int {
-        AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix("vi") }.count
-    }
+    private var vietnameseVoiceCount: Int { Self.cachedVietnameseCount }
 
     var body: some View {
         NavigationStack {
@@ -991,7 +994,7 @@ struct TTSView: View {
 
                     // ----- Chọn giọng -----
                     if tts.engineType == .system {
-                        section("Giọng đọc hệ thống (\(AVSpeechSynthesisVoice.speechVoices().count) giọng · \(vietnameseVoiceCount) tiếng Việt)") {
+                        section("Giọng đọc hệ thống (\(Self.cachedVoices.count) giọng · \(vietnameseVoiceCount) tiếng Việt)") {
                             Toggle(isOn: $onlyVietnameseVoices) {
                                 Label("Chỉ hiện giọng tiếng Việt", systemImage: "flag.fill").font(.subheadline)
                             }.tint(Theme.accent)
