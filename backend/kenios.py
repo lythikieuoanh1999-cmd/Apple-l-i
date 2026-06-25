@@ -2706,7 +2706,7 @@ async def social_download(b: SocialDownloadIn, user=Depends(get_user)) -> dict[s
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-        _, err = await asyncio.wait_for(proc.communicate(), timeout=300)
+        _, err = await asyncio.wait_for(proc.communicate(), timeout=1800)  # 30 phút — video dài/nặng
     except asyncio.TimeoutError:
         shutil.rmtree(tmp, ignore_errors=True)
         raise HTTPException(status_code=504, detail="Tải quá lâu (timeout). Thử độ phân giải thấp hơn.")

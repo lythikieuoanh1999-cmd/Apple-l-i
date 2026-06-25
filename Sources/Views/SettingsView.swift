@@ -101,6 +101,12 @@ struct SettingsView: View {
                     .disabled(cleaning)
                 }
 
+                Section("Bộ nhớ đệm (Cache)") {
+                    Button {
+                        clearCache()
+                    } label: { Label("Xoá cache của app", systemImage: "trash") }
+                }
+
                 if let message { Text(message).foregroundStyle(.green).font(.footnote) }
 
                 Section {
@@ -118,6 +124,18 @@ struct SettingsView: View {
             }
             .onAppear { email = store.email ?? ""; phone = store.phone ?? "" }
         }
+    }
+
+    private func clearCache() {
+        // Xoá URLCache + thư mục Caches + tệp tạm
+        URLCache.shared.removeAllCachedResponses()
+        let fm = FileManager.default
+        for dir in [fm.urls(for: .cachesDirectory, in: .userDomainMask).first, fm.temporaryDirectory].compactMap({ $0 }) {
+            if let items = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
+                for u in items { try? fm.removeItem(at: u) }
+            }
+        }
+        message = "Đã xoá cache."
     }
 
     private func saveProfile() async {

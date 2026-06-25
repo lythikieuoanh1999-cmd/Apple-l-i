@@ -6,6 +6,9 @@ struct CreatorToolsView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("Ảnh & Video") {
+                    navLink("Công cụ ảnh (tách nền · nén · làm nét)", "wand.and.stars", ImageToolsView())
+                }
                 Section("Văn bản & Caption") {
                     navLink("Đếm ký tự / từ", "textformat.123", CaptionCounterView())
                     navLink("Chữ kiểu (fancy)", "sparkles", FancyTextView())

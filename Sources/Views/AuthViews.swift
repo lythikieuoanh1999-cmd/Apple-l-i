@@ -24,10 +24,9 @@ struct LoginView: View {
                                                            startPoint: .topLeading, endPoint: .bottomTrailing),
                                             lineWidth: 1.5)
                             )
-                        Text("K")
-                            .font(.system(size: 66, weight: .black, design: .rounded))
-                            .foregroundStyle(.white)
-                            .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+                        Text("🦊")
+                            .font(.system(size: 66))
+                            .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
                     }
                     .padding(.top, 52)
 

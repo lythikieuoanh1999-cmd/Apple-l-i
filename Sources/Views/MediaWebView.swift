@@ -47,6 +47,8 @@ struct BrowserWebView: UIViewRepresentable {
 
         let wv = WKWebView(frame: .zero, configuration: cfg)
         wv.allowsBackForwardNavigationGestures = true
+        // Ép phiên bản WEB (Safari mobile) → TikTok/YouTube... chạy trên web, không nhảy sang app gốc
+        wv.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
         wv.navigationDelegate = context.coordinator
         let coord = context.coordinator
         coord.webView = wv
@@ -90,6 +92,16 @@ struct BrowserWebView: UIViewRepresentable {
             model.isLoading = wv.isLoading
             model.pageTitle = wv.title ?? ""
             if let u = wv.url?.absoluteString { model.urlText = u }
+        }
+        // Chặn mở app gốc: chỉ cho http/https chạy trong web, huỷ các scheme app (tiktok://, youtube://, fb://...)
+        func webView(_ wv: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            if let scheme = navigationAction.request.url?.scheme?.lowercased(),
+               scheme != "http", scheme != "https", scheme != "about" {
+                decisionHandler(.cancel)   // không mở app ngoài
+                return
+            }
+            decisionHandler(.allow)
         }
         func webView(_ wv: WKWebView, didStartProvisionalNavigation n: WKNavigation!) { model.isLoading = true; sync(wv) }
         func webView(_ wv: WKWebView, didFinish n: WKNavigation!) { model.isLoading = false; sync(wv) }
