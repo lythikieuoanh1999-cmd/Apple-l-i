@@ -24,7 +24,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Cần Xcode mới (SDK iOS 26) để biên dịch hiệu ứng Liquid Glass (GlassKit.swift)
+      # Dùng Xcode ổn định mới nhất trên runner (code đã tương thích iOS 16+, không cần SDK iOS 26)
       - name: Select latest Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:

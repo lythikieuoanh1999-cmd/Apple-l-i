@@ -1,25 +1,18 @@
 import SwiftUI
 
-// Hiệu ứng Liquid Glass của iOS 26. Trên iOS cũ hơn tự động dùng material.
-// Lưu ý: cần build bằng Xcode 26 (SDK iOS 26) để biên dịch glassEffect.
+// Thẻ nền kiểu "kính mờ" dùng vật liệu hệ thống (ultraThinMaterial).
+// Tương thích mọi Xcode/SDK (iOS 15+) → IPA build chắc chắn thành công,
+// không phụ thuộc API Liquid Glass (glassEffect) của SDK iOS 26.
 extension View {
-    @ViewBuilder
     func kGlass<S: Shape>(_ shape: S) -> some View {
-        if #available(iOS 26.0, *) {
-            self.glassEffect(.regular, in: shape)
-        } else {
-            self.background(.ultraThinMaterial, in: shape)
-        }
+        self.background(.ultraThinMaterial, in: shape)
     }
 
     @ViewBuilder
     func kGlassInteractive<S: Shape>(_ shape: S, tint: Color? = nil) -> some View {
-        if #available(iOS 26.0, *) {
-            if let tint {
-                self.glassEffect(.regular.tint(tint).interactive(), in: shape)
-            } else {
-                self.glassEffect(.regular.interactive(), in: shape)
-            }
+        if let tint {
+            self.background(tint.opacity(0.18), in: shape)
+                .background(.ultraThinMaterial, in: shape)
         } else {
             self.background(.ultraThinMaterial, in: shape)
         }
