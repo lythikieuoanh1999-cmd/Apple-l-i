@@ -74,6 +74,14 @@ struct ProxyPane: View {
     @State private var spawning = false
 
     private let schemes = ["http", "https", "socks5"]
+    // Chọn nước nhanh (điền sẵn mã vùng cho proxy)
+    private let countries: [(String, String)] = [
+        ("🇻🇳 VN", "VN"), ("🇺🇸 US", "US"), ("🇸🇬 SG", "SG"), ("🇯🇵 JP", "JP"),
+        ("🇰🇷 KR", "KR"), ("🇬🇧 UK", "GB"), ("🇩🇪 DE", "DE"), ("🇫🇷 FR", "FR"),
+        ("🇨🇳 CN", "CN"), ("🇭🇰 HK", "HK"), ("🇹🇼 TW", "TW"), ("🇹🇭 TH", "TH"),
+        ("🇮🇳 IN", "IN"), ("🇦🇺 AU", "AU"), ("🇨🇦 CA", "CA"), ("🇳🇱 NL", "NL"),
+        ("🇷🇺 RU", "RU"), ("🇧🇷 BR", "BR"), ("🇮🇩 ID", "ID"), ("🇵🇭 PH", "PH"),
+    ]
 
     private var filtered: [ProxyItem] {
         regionFilter.isEmpty ? proxies : proxies.filter { $0.region == regionFilter }
@@ -234,6 +242,14 @@ struct ProxyPane: View {
             field("Port", $fPort, keyboard: .numberPad)
             field("Username (tuỳ chọn)", $fUser)
             field("Password (tuỳ chọn)", $fPass, secure: true)
+            Text("Chọn nước nhanh").font(.caption2).foregroundStyle(.secondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack {
+                    ForEach(countries, id: \.1) { c in
+                        chip(c.0, selected: fRegion == c.1) { fRegion = c.1 }
+                    }
+                }
+            }
             field("Vùng (vd: US, SG, VN)", $fRegion)
             field("Nhãn (tuỳ chọn)", $fLabel)
             Button("Lưu proxy") { Task { await add() } }

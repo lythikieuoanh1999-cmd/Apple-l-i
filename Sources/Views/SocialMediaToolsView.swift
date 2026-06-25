@@ -3,10 +3,25 @@ import UniformTypeIdentifiers
 import QuickLook
 import WebKit
 
+// Điểm phát Live (RTMP + stream key) lưu lại để phát đa nền tảng
+struct LiveTarget: Identifiable, Codable {
+    var id = UUID()
+    var name: String
+    var rtmp: String
+    var key: String
+}
+
 struct SocialMediaToolsView: View {
     @EnvironmentObject var store: AppStore
-    
+
     @State private var selectedSegment = 0 // 0: AI Generator, 1: Downloader, 2: Live Tools
+
+    // Phát Live đa nền tảng (nhập stream key / link)
+    @AppStorage("kenios_live_targets") private var liveTargetsRaw = "[]"
+    @State private var ltName = ""
+    @State private var ltRtmp = "rtmp://"
+    @State private var ltKey = ""
+    @State private var ltLink = ""
     
     // AI Generator States
     @State private var topic = ""
@@ -436,13 +451,132 @@ struct SocialMediaToolsView: View {
                     }
                     .padding()
                 }
-                
+
+                // Section 3: Phát Live đa nền tảng bằng stream key / link
+                multiLivePane
+
                 if let err = streamError {
                     Text(err).foregroundStyle(.red).font(.caption).padding(.horizontal)
                 }
             }
             .padding()
         }
+    }
+
+    // MARK: - Phát Live đa nền tảng (stream key / link)
+    private var multiLivePane: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("3. Phát Live đa nền tảng (stream key / link)").font(.headline)
+            Text("Dán sẵn RTMP URL + Stream Key của TikTok / YouTube / Facebook... Lưu nhiều điểm phát rồi copy vào OBS/app phát để live cùng lúc.")
+                .font(.caption).foregroundStyle(.secondary)
+
+            // Tách nhanh từ 1 link gộp rtmp://.../streamkey
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Dán link gộp (rtmp://máy-chủ/.../stream-key)").font(.caption).bold()
+                HStack {
+                    TextField("rtmp://...", text: $ltLink)
+                        .font(.system(.caption, design: .monospaced))
+                        .autocorrectionDisabled().textInputAutocapitalization(.never)
+                        .padding(10).background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    Button("Tách") { splitLink() }
+                        .buttonStyle(.bordered)
+                        .disabled(!ltLink.contains("/"))
+                }
+            }
+
+            TextField("Tên (vd: TikTok của tôi)", text: $ltName)
+                .padding(10).background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            TextField("RTMP URL (vd: rtmp://...)", text: $ltRtmp)
+                .font(.system(.caption, design: .monospaced))
+                .autocorrectionDisabled().textInputAutocapitalization(.never)
+                .padding(10).background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            TextField("Stream Key", text: $ltKey)
+                .font(.system(.caption, design: .monospaced))
+                .autocorrectionDisabled().textInputAutocapitalization(.never)
+                .padding(10).background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            Button {
+                addTarget()
+            } label: {
+                Label("Lưu điểm phát", systemImage: "plus.circle.fill")
+                    .frame(maxWidth: .infinity).frame(height: 44)
+                    .background(Theme.accent).foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .disabled(ltKey.trimmingCharacters(in: .whitespaces).isEmpty || ltRtmp.count < 8)
+
+            ForEach(liveTargets) { t in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Image(systemName: "dot.radiowaves.left.and.right").foregroundStyle(.red)
+                        Text(t.name).font(.subheadline.bold())
+                        Spacer()
+                        Button(role: .destructive) { removeTarget(t) } label: {
+                            Image(systemName: "trash").font(.caption)
+                        }
+                    }
+                    keyRow("RTMP", t.rtmp)
+                    keyRow("Key", t.key)
+                    Button {
+                        UIPasteboard.general.string = "Server: \(t.rtmp)\nKey: \(t.key)"
+                    } label: {
+                        Label("Copy cả RTMP + Key", systemImage: "doc.on.doc").font(.caption)
+                    }.buttonStyle(.bordered)
+                }
+                .padding(10)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+
+            Text("📌 iOS không tự đẩy hình từ camera khi app chưa ký. Dùng OBS Studio (máy tính) hoặc app phát RTMP, dán Server + Key vào để live. Có thể lưu nhiều nền tảng để restream.")
+                .font(.caption2).foregroundStyle(.secondary)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemBackground).opacity(0.3))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private func keyRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).font(.caption2).foregroundStyle(.secondary).frame(width: 42, alignment: .leading)
+            Text(value).font(.system(.caption2, design: .monospaced)).lineLimit(1)
+            Spacer()
+            Button { UIPasteboard.general.string = value } label: { Image(systemName: "doc.on.doc").font(.caption2) }
+        }
+        .padding(8).background(Color(.systemBackground)).clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var liveTargets: [LiveTarget] {
+        (try? JSONDecoder().decode([LiveTarget].self, from: Data(liveTargetsRaw.utf8))) ?? []
+    }
+    private func saveTargets(_ list: [LiveTarget]) {
+        if let d = try? JSONEncoder().encode(list) {
+            liveTargetsRaw = String(data: d, encoding: .utf8) ?? "[]"
+        }
+    }
+    private func splitLink() {
+        let link = ltLink.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let idx = link.lastIndex(of: "/") else { return }
+        ltRtmp = String(link[..<idx])
+        ltKey = String(link[link.index(after: idx)...])
+    }
+    private func addTarget() {
+        var list = liveTargets
+        let name = ltName.trimmingCharacters(in: .whitespaces).isEmpty
+            ? "Điểm phát \(list.count + 1)" : ltName
+        list.append(LiveTarget(name: name,
+                               rtmp: ltRtmp.trimmingCharacters(in: .whitespaces),
+                               key: ltKey.trimmingCharacters(in: .whitespaces)))
+        saveTargets(list)
+        ltName = ""; ltRtmp = "rtmp://"; ltKey = ""; ltLink = ""
+    }
+    private func removeTarget(_ t: LiveTarget) {
+        saveTargets(liveTargets.filter { $0.id != t.id })
     }
     
     // MARK: - Helpers
