@@ -1,5 +1,13 @@
 import SwiftUI
 
+// Bản ghi DNS có thể sửa (tên / loại / giá trị)
+struct DnsRecord: Identifiable, Codable, Hashable {
+    var id = UUID()
+    var type: String
+    var name: String
+    var value: String
+}
+
 // ======================== KenMail — Email tích hợp (tài khoản + mật khẩu) ========================
 // Chạy chung trong backend KENIOS: tạo hộp thư @kenios.store có mật khẩu, nhận thư thật
 // (qua MX + bộ nhận SMTP), gửi nội bộ và gửi ra ngoài (qua relay nếu cấu hình).
@@ -32,6 +40,9 @@ struct KenMailView: View {
     @State private var showSettings = false
     @AppStorage("kenmail_inet_url") private var inetURL = "https://portal.inet.vn"
     @AppStorage("kenmail_webmail_url") private var webmailURL = "https://mail.kenios.store"
+    // Bản ghi DNS sửa được (lưu JSON)
+    @AppStorage("kenmail_dns_records") private var dnsRaw = ""
+    @State private var dnsRecords: [DnsRecord] = []
 
     // Tạo hàng loạt ngẫu nhiên
     @State private var showBulk = false
@@ -132,13 +143,43 @@ struct KenMailView: View {
                         webmailURL = "https://mail.kenios.store"
                     }.font(.caption)
                 }
-                Section("4 bản ghi DNS cần thêm trên iNET (bấm để copy)") {
-                    dnsRow("MX", "@", "mx.inet.vn")
-                    dnsRow("A", "mail", "103.57.220.204")
-                    dnsRow("TXT (SPF)", "@", "v=spf1 a mx include:_spf.inet.vn ~all")
-                    dnsRow("TXT (DKIM)", "keniosstore._domainkey",
-                           "v=DKIM1; k=rsa; p=<DÁN CHUỖI DKIM DÀI TỪ TRANG iNET>")
-                    Text("Thêm xong → đợi 5–30 phút → bấm Verify trên iNET → tạo email được. DKIM phải copy đúng chuỗi dài hiển thị trong trang iNET của bạn.")
+                Section("Bản ghi DNS (sửa tên/loại/giá trị · bấm copy)") {
+                    ForEach($dnsRecords) { $rec in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                TextField("Loại (MX/A/TXT)", text: $rec.type)
+                                    .frame(width: 110)
+                                    .textInputAutocapitalization(.characters)
+                                    .autocorrectionDisabled()
+                                Divider()
+                                TextField("Tên (@, mail, ...)", text: $rec.name)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                                Button { UIPasteboard.general.string = rec.value } label: {
+                                    Image(systemName: "doc.on.doc").font(.caption)
+                                }.buttonStyle(.borderless)
+                            }
+                            TextField("Giá trị bản ghi", text: $rec.value, axis: .vertical)
+                                .lineLimit(1...4)
+                                .font(.system(.caption, design: .monospaced))
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                        }
+                        .onChange(of: rec) { _ in saveDNS() }
+                    }
+                    .onDelete { idx in dnsRecords.remove(atOffsets: idx); saveDNS() }
+
+                    Button {
+                        dnsRecords.append(DnsRecord(type: "TXT", name: "@", value: ""))
+                        saveDNS()
+                    } label: { Label("Thêm bản ghi", systemImage: "plus") }
+
+                    Button {
+                        dnsRecords = Self.defaultDNS(); saveDNS()
+                    } label: { Label("Khôi phục mẫu iNET", systemImage: "arrow.counterclockwise") }
+                        .font(.caption)
+
+                    Text("Sửa xong là tự lưu. Copy từng giá trị rồi dán vào portal.inet.vn → Quản lý DNS → Verify → tạo email.")
                         .font(.caption2).foregroundStyle(.secondary)
                 }
                 Section {
@@ -149,20 +190,30 @@ struct KenMailView: View {
             .navigationTitle("Cài đặt KenMail")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Xong") { showSettings = false } } }
+            .onAppear { loadDNS() }
         }
     }
 
-    private func dnsRow(_ type: String, _ name: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                Text(type).font(.caption.bold()).foregroundStyle(Theme.accent)
-                Text("Tên: \(name)").font(.caption2).foregroundStyle(.secondary)
-                Spacer()
-                Button { UIPasteboard.general.string = value } label: {
-                    Image(systemName: "doc.on.doc").font(.caption2)
-                }
-            }
-            Text(value).font(.system(.caption2, design: .monospaced)).textSelection(.enabled)
+    static func defaultDNS() -> [DnsRecord] {
+        [
+            DnsRecord(type: "MX",  name: "@",    value: "mx.inet.vn"),
+            DnsRecord(type: "A",   name: "mail", value: "103.57.220.204"),
+            DnsRecord(type: "TXT", name: "@",    value: "v=spf1 a mx include:_spf.inet.vn ~all"),
+            DnsRecord(type: "TXT", name: "keniosstore._domainkey",
+                      value: "v=DKIM1; k=rsa; p=<DÁN CHUỖI DKIM DÀI TỪ TRANG iNET>"),
+        ]
+    }
+    private func loadDNS() {
+        if let d = dnsRaw.data(using: .utf8),
+           let arr = try? JSONDecoder().decode([DnsRecord].self, from: d), !arr.isEmpty {
+            dnsRecords = arr
+        } else {
+            dnsRecords = Self.defaultDNS()
+        }
+    }
+    private func saveDNS() {
+        if let d = try? JSONEncoder().encode(dnsRecords) {
+            dnsRaw = String(data: d, encoding: .utf8) ?? ""
         }
     }
 
