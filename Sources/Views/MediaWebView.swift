@@ -191,10 +191,12 @@ struct MediaWebView: View {
                     HStack(spacing: 8) {
                         ForEach(shortcuts, id: \.0) { s in
                             Button { model.open(s.2); addressFocused = false } label: {
-                                Label(s.0, systemImage: s.1).font(.caption)
+                                Label(s.0, systemImage: s.1).font(.caption.weight(.semibold))
+                                    .foregroundStyle(Theme.accent)
                                     .padding(.horizontal, 12).padding(.vertical, 7)
-                                    .background(Color(.secondarySystemBackground))
+                                    .background(Theme.accent.opacity(0.14))
                                     .clipShape(Capsule())
+                                    .overlay(Capsule().stroke(Theme.accent.opacity(0.3), lineWidth: 1))
                             }.buttonStyle(.plain)
                         }
                         // Lối tắt do người dùng thêm (game/app riêng)

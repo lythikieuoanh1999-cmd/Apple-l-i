@@ -16,6 +16,14 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    KHeroHeader(icon: "gearshape.fill",
+                                title: "Cài đặt",
+                                subtitle: "Tài khoản · giao diện · dọn dẹp · cache")
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                }
+
                 // SERVER — chỉ hiện khi CHƯA cài sẵn máy chủ mặc định (Config.defaultServerURL)
                 if Config.defaultServerURL.isEmpty {
                     Section("Kết nối máy chủ (\(store.serverType))") {
