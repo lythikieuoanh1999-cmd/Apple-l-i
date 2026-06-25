@@ -327,6 +327,14 @@ struct MailInboxResponse: Decodable {
     let mails: [MailItem]
 }
 
+// OTP — mã xác nhận email
+struct OtpSendResponse: Decodable {
+    let sent: Bool
+    let channel: String       // internal | external | none
+    let hint: String?
+    let debugCode: String?
+}
+
 struct EncryptResponse: Decodable {
     let result: String
 }

@@ -58,6 +58,7 @@ SMTP_RELAY_HOST = os.getenv("SMTP_RELAY_HOST", "")          # gửi ra ngoài qu
 SMTP_RELAY_PORT = int(os.getenv("SMTP_RELAY_PORT", "587"))
 SMTP_RELAY_USER = os.getenv("SMTP_RELAY_USER", "")
 SMTP_RELAY_PASS = os.getenv("SMTP_RELAY_PASS", "")
+OTP_DEBUG       = os.getenv("OTP_DEBUG", "0") == "1"        # trả mã trong response để test khi chưa có mail
 
 # Thư mục lưu tệp tải lên của user trên đĩa
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
@@ -324,6 +325,13 @@ def init_db() -> None:
                 body TEXT,
                 created_at INTEGER,
                 seen INTEGER DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS otp_codes(
+                email TEXT PRIMARY KEY,
+                code TEXT NOT NULL,
+                purpose TEXT DEFAULT 'register',
+                exp INTEGER NOT NULL,
+                attempts INTEGER DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS conversations(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1122,6 +1130,7 @@ class RegisterIn(BaseModel):
     password: str
     email: Optional[str] = None
     phone: Optional[str] = None
+    code: Optional[str] = None     # mã xác nhận gửi qua email (nếu có email)
 
 class LoginIn(BaseModel):
     username: str
@@ -1253,6 +1262,11 @@ def register(b: RegisterIn) -> dict[str, Any]:
     if len(b.username) < 3 or len(b.password) < 6:
         raise HTTPException(status_code=400,
             detail="Username ≥3 ký tự, mật khẩu ≥6 ký tự.")
+    # Nếu có gửi mã xác nhận thì bắt buộc khớp (xác minh email qua OTP)
+    if b.code is not None and (b.email or "").strip():
+        if not _otp_check(b.email, b.code):
+            raise HTTPException(status_code=400,
+                detail="Mã xác nhận sai hoặc đã hết hạn. Vui lòng lấy mã mới.")
     with db() as c:
         if c.execute("SELECT 1 FROM users WHERE username=?", (b.username,)).fetchone():
             raise HTTPException(status_code=409, detail="Username đã tồn tại.")
@@ -2874,6 +2888,99 @@ def _deliver_incoming(rcpt: str, sender: str, subject: str, body: str) -> None:
                       (box["id"], "in", sender, rcpt, subject, body, int(time.time())))
     except Exception as e:
         logging.warning("deliver_incoming lỗi: %s", e)
+
+
+def send_system_mail(to: str, subject: str, body: str) -> str:
+    """Gửi mail hệ thống (vd mã OTP). Trả 'internal' / 'external' / 'none'."""
+    to = (to or "").strip()
+    if "@" not in to:
+        return "none"
+    sender = f"no-reply@{MAIL_DOMAIN}"
+    # Nội bộ: nếu là hộp thư @MAIL_DOMAIN đã tồn tại → giao thẳng vào KenMail
+    if to.lower().endswith("@" + MAIL_DOMAIN):
+        _deliver_incoming(to, sender, subject, body)
+        with db() as c:
+            ok = c.execute("SELECT 1 FROM mailboxes WHERE address=?", (to.lower(),)).fetchone()
+        return "internal" if ok else "none"
+    # Bên ngoài: cần SMTP relay
+    if SMTP_RELAY_HOST:
+        try:
+            m = _EmailMessage()
+            m["From"] = sender; m["To"] = to; m["Subject"] = subject
+            m.set_content(body)
+            with _smtplib.SMTP(SMTP_RELAY_HOST, SMTP_RELAY_PORT, timeout=30) as s:
+                s.starttls()
+                if SMTP_RELAY_USER:
+                    s.login(SMTP_RELAY_USER, SMTP_RELAY_PASS)
+                s.send_message(m)
+            return "external"
+        except Exception as e:
+            logging.warning("send_system_mail relay lỗi: %s", e)
+            return "none"
+    return "none"
+
+
+# ===================== Mã xác nhận email (OTP) =====================
+class OtpSendIn(BaseModel):
+    email: str
+    purpose: str = "register"
+
+
+class OtpVerifyIn(BaseModel):
+    email: str
+    code: str
+
+
+def _otp_store_and_send(email: str, purpose: str) -> dict[str, Any]:
+    email = (email or "").strip().lower()
+    if "@" not in email:
+        raise HTTPException(status_code=400, detail="Email không hợp lệ.")
+    code = f"{secrets.randbelow(1000000):06d}"
+    exp = int(time.time()) + 600  # 10 phút
+    with db() as c:
+        c.execute("INSERT INTO otp_codes(email,code,purpose,exp,attempts) VALUES(?,?,?,?,0) "
+                  "ON CONFLICT(email) DO UPDATE SET code=excluded.code, purpose=excluded.purpose, "
+                  "exp=excluded.exp, attempts=0", (email, code, purpose, exp))
+    subject = "Mã xác nhận KENIOS"
+    body = (f"Mã xác nhận của bạn là: {code}\n"
+            f"Mã có hiệu lực trong 10 phút.\n"
+            f"Nếu bạn không yêu cầu, hãy bỏ qua email này.")
+    channel = send_system_mail(email, subject, body)
+    resp: dict[str, Any] = {"sent": channel != "none", "channel": channel}
+    if channel == "none":
+        resp["hint"] = ("Chưa gửi được mã qua email. Email @" + MAIL_DOMAIN +
+                        " cần đã tạo hộp thư; email ngoài (Gmail...) cần cấu hình SMTP_RELAY.")
+    if OTP_DEBUG:
+        resp["debug_code"] = code
+    return resp
+
+
+def _otp_check(email: str, code: str) -> bool:
+    email = (email or "").strip().lower()
+    code = (code or "").strip()
+    with db() as c:
+        row = c.execute("SELECT code,exp,attempts FROM otp_codes WHERE email=?", (email,)).fetchone()
+        if not row:
+            return False
+        if row["attempts"] >= 6:
+            return False
+        if int(time.time()) > row["exp"]:
+            return False
+        if row["code"] != code:
+            c.execute("UPDATE otp_codes SET attempts=attempts+1 WHERE email=?", (email,))
+            return False
+        c.execute("DELETE FROM otp_codes WHERE email=?", (email,))
+    return True
+
+
+@app.post("/auth/send-otp")
+def auth_send_otp(b: OtpSendIn) -> dict[str, Any]:
+    return _otp_store_and_send(b.email, b.purpose or "register")
+
+
+@app.post("/auth/verify-otp")
+def auth_verify_otp(b: OtpVerifyIn) -> dict[str, Any]:
+    return {"valid": _otp_check(b.email, b.code)}
 
 
 def start_mail_smtp() -> None:

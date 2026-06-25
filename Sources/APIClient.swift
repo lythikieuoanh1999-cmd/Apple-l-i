@@ -67,11 +67,18 @@ struct APIClient {
     }
 
     // ---- Tài khoản ----
-    func register(_ username: String, _ password: String, email: String?, phone: String?) async throws -> AuthResponse {
+    func register(_ username: String, _ password: String, email: String?, phone: String?,
+                  code: String? = nil) async throws -> AuthResponse {
         var body: [String: Any] = ["username": username, "password": password]
         if let email, !email.isEmpty { body["email"] = email }
         if let phone, !phone.isEmpty { body["phone"] = phone }
+        if let code, !code.isEmpty { body["code"] = code }
         return try decode(try await send("/auth/register", method: "POST", json: body, auth: false))
+    }
+    // Gửi mã xác nhận (OTP) qua email
+    func sendOtp(email: String, purpose: String = "register") async throws -> OtpSendResponse {
+        try decode(try await send("/auth/send-otp", method: "POST",
+                                  json: ["email": email, "purpose": purpose], auth: false))
     }
     func login(_ username: String, _ password: String) async throws -> AuthResponse {
         try decode(try await send("/auth/login", method: "POST",
