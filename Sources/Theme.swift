@@ -6,6 +6,12 @@ enum Theme {
     static let gold   = Color(red: 1.0, green: 0.84, blue: 0.0)
     static let neon   = Color(red: 0.0, green: 1.0, blue: 0.85)
 
+    // ===== Bảng màu navy cao cấp (dùng cho nền toàn app) =====
+    static let bgNavy   = Color(red: 0.043, green: 0.059, blue: 0.102)   // #0B0F1A nền sâu
+    static let cardNavy = Color(red: 0.086, green: 0.102, blue: 0.169)   // #161A2B thẻ/ô
+    static let bgNavyUI   = UIColor(red: 0.043, green: 0.059, blue: 0.102, alpha: 1)
+    static let cardNavyUI = UIColor(red: 0.086, green: 0.102, blue: 0.169, alpha: 1)
+
     // Gradient cho nền card
     static let cardGradient = LinearGradient(
         colors: [Color(.systemBackground), Color(.secondarySystemBackground)],
