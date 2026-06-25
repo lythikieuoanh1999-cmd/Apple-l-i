@@ -107,7 +107,7 @@ struct MediaWebView: View {
         ("Âm nhạc",  "music.note",            "https://soundcloud.com/discover"),
         ("Spotify",  "music.note.list",       "https://open.spotify.com"),
         ("Phim",     "film.fill",             "https://www.youtube.com/results?search_query=phim+hay"),
-        ("CenMail",  "envelope.fill",         "https://mail.kenios.store"),
+        ("KenMail",  "envelope.fill",         "https://mail.kenios.store"),
         ("Tìm kiếm", "magnifyingglass",       "https://www.google.com"),
     ]
 

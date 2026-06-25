@@ -11,5 +11,5 @@ python-docx
 openpyxl
 # Đọc bình luận TikTok Live (tính năng TTS như TikFinity)
 TikTokLive>=6.0
-# CenMail — nhận thư đến (email tích hợp tài khoản+mật khẩu)
+# KenMail — nhận thư đến (email tích hợp tài khoản+mật khẩu)
 aiosmtpd>=1.4

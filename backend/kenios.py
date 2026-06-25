@@ -50,7 +50,7 @@ TOKEN_TTL       = int(os.getenv("TOKEN_TTL", str(60 * 60 * 24 * 30)))  # 30 ngà
 REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "120"))
 SANDBOX_TIMEOUT = int(os.getenv("SANDBOX_TIMEOUT", "15"))  # giây chạy code
 
-# ----- Email tích hợp (CenMail) chạy chung trong KENIOS -----
+# ----- Email tích hợp (KenMail) chạy chung trong KENIOS -----
 MAIL_DOMAIN     = os.getenv("MAIL_DOMAIN", "kenios.store")
 MAIL_ENABLE     = os.getenv("MAIL_ENABLE", "1") == "1"      # bật bộ nhận thư SMTP nội bộ
 MAIL_SMTP_PORT  = int(os.getenv("MAIL_SMTP_PORT", "25"))    # cổng nhận thư đến (cần MX + mở port 25)
@@ -2734,7 +2734,7 @@ async def tiktok_live_disconnect(b: TikTokLiveIn, user=Depends(get_user)) -> dic
     return {"ok": True}
 
 
-# ======================== CenMail — Email tích hợp (tài khoản + mật khẩu) ========================
+# ======================== KenMail — Email tích hợp (tài khoản + mật khẩu) ========================
 import re as _re_mail
 import smtplib as _smtplib
 from email.message import EmailMessage as _EmailMessage
@@ -2884,7 +2884,7 @@ def start_mail_smtp() -> None:
         from aiosmtpd.controller import Controller
         import email as _email_mod
     except Exception:
-        logging.warning("CenMail: chưa cài aiosmtpd → không nhận được thư đến. Cài: pip install aiosmtpd")
+        logging.warning("KenMail: chưa cài aiosmtpd → không nhận được thư đến. Cài: pip install aiosmtpd")
         return
 
     def _extract_body(msg) -> str:
@@ -2915,9 +2915,9 @@ def start_mail_smtp() -> None:
     try:
         controller = Controller(_Handler(), hostname="0.0.0.0", port=MAIL_SMTP_PORT)
         controller.start()
-        logging.info("CenMail SMTP nhận thư tại cổng %s cho @%s", MAIL_SMTP_PORT, MAIL_DOMAIN)
+        logging.info("KenMail SMTP nhận thư tại cổng %s cho @%s", MAIL_SMTP_PORT, MAIL_DOMAIN)
     except Exception as e:
-        logging.warning("CenMail: không khởi động được SMTP cổng %s: %s", MAIL_SMTP_PORT, e)
+        logging.warning("KenMail: không khởi động được SMTP cổng %s: %s", MAIL_SMTP_PORT, e)
 
 
 # ======================== Dịch sang tiếng Việt (TTS đa ngôn ngữ) ========================

@@ -64,10 +64,10 @@ Lần đầu kéo image mất vài phút. Xong sẽ in ra link quản trị.
 
 ## 4. Dùng trong app KENIOS
 
-- Tab **CenMail** trong app đã trỏ tới `https://mail.kenios.store`.
+- Tab **KenMail** trong app đã trỏ tới `https://mail.kenios.store`.
 - Sau khi Mailcow chạy, người dùng vào **Webmail (SOGo)**: `https://mail.kenios.store/SOGo/`
   → đăng nhập bằng `ten@kenios.store` + mật khẩu vừa tạo → gửi/nhận thư thật.
-- Muốn app mở thẳng trang webmail: báo mình, mình đổi CenMail sang `/SOGo/`.
+- Muốn app mở thẳng trang webmail: báo mình, mình đổi KenMail sang `/SOGo/`.
 
 > Lưu ý: máy chủ này sẽ **thay thế** trang temp-mail cũ tại `mail.kenios.store`.
 > Nếu muốn giữ cả hai, dùng subdomain khác cho mail server (vd `mx.kenios.store`).

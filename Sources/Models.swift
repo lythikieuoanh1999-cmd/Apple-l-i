@@ -298,7 +298,7 @@ struct TranslateResponse: Decodable {
     let source: String?
 }
 
-// CenMail — email tích hợp
+// KenMail — email tích hợp
 struct Mailbox: Decodable, Identifiable {
     let id: Int
     let address: String

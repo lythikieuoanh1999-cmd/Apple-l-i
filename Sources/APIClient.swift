@@ -450,7 +450,7 @@ struct APIClient {
                                   json: ["text": text, "target": target, "source": source]))
     }
 
-    // ---- CenMail (email tích hợp tài khoản + mật khẩu) ----
+    // ---- KenMail (email tích hợp tài khoản + mật khẩu) ----
     func mailCreate(local: String, password: String) async throws -> MailboxCreateResponse {
         try decode(try await send("/mail/create", method: "POST",
                                   json: ["local": local, "password": password]))

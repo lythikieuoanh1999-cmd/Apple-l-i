@@ -1,9 +1,9 @@
 import SwiftUI
 
-// ======================== CenMail — Email tích hợp (tài khoản + mật khẩu) ========================
+// ======================== KenMail — Email tích hợp (tài khoản + mật khẩu) ========================
 // Chạy chung trong backend KENIOS: tạo hộp thư @kenios.store có mật khẩu, nhận thư thật
 // (qua MX + bộ nhận SMTP), gửi nội bộ và gửi ra ngoài (qua relay nếu cấu hình).
-struct CenMailView: View {
+struct KenMailView: View {
     @EnvironmentObject var store: AppStore
 
     @State private var mailboxes: [Mailbox] = []
@@ -36,7 +36,7 @@ struct CenMailView: View {
                     inboxView
                 }
             }
-            .navigationTitle("CenMail")
+            .navigationTitle("KenMail")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { ThreeDLogoText(size: 20) }
