@@ -27,6 +27,14 @@ struct KenMailView: View {
 
     @State private var openMail: MailItem?
 
+    // Tạo hàng loạt ngẫu nhiên
+    @State private var showBulk = false
+    @State private var bulkCount = "10"
+    @State private var bulkPrefix = ""
+    @State private var bulking = false
+    @State private var bulkResults: [MailCredential] = []
+    @State private var showBulkResults = false
+
     var body: some View {
         NavigationStack {
             Group {
@@ -41,7 +49,10 @@ struct KenMailView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { ThreeDLogoText(size: 20) }
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button { showCreate = true } label: { Image(systemName: "plus") }
+                    Menu {
+                        Button { showCreate = true } label: { Label("Tạo 1 hộp thư", systemImage: "plus") }
+                        Button { showBulk = true } label: { Label("Tạo nhiều ngẫu nhiên", systemImage: "rectangle.stack.badge.plus") }
+                    } label: { Image(systemName: "plus") }
                     Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }
                 }
             }
@@ -55,11 +66,49 @@ struct KenMailView: View {
             } message: {
                 Text("Địa chỉ sẽ là tên@\(domain), có mật khẩu để đăng nhập webmail.")
             }
+            .alert("Tạo nhiều hộp thư ngẫu nhiên", isPresented: $showBulk) {
+                TextField("Số lượng (1–50)", text: $bulkCount).keyboardType(.numberPad)
+                TextField("Tiền tố (tuỳ chọn, vd: shop)", text: $bulkPrefix)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                Button("Tạo") { Task { await bulkCreate() } }
+                Button("Huỷ", role: .cancel) { }
+            } message: {
+                Text("Tạo nhanh nhiều email @\(domain) ngẫu nhiên (không cần SĐT). Kèm mật khẩu để đăng nhập.")
+            }
             .sheet(isPresented: $showCompose) { composeSheet }
+            .sheet(isPresented: $showBulkResults) { bulkResultSheet }
             .sheet(item: $openMail) { m in mailDetail(m) }
             .alert("Lỗi", isPresented: .constant(error != nil)) {
                 Button("OK") { error = nil }
             } message: { Text(error ?? "") }
+        }
+    }
+
+    // MARK: - Kết quả tạo hàng loạt
+    private var bulkResultSheet: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Button {
+                        UIPasteboard.general.string = bulkResults
+                            .map { "\($0.address) | \($0.password)" }.joined(separator: "\n")
+                    } label: { Label("Copy tất cả (địa chỉ | mật khẩu)", systemImage: "doc.on.doc") }
+                }
+                ForEach(bulkResults) { c in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(c.address).font(.subheadline.bold())
+                        Text("Mật khẩu: \(c.password)").font(.caption.monospaced()).foregroundStyle(.secondary)
+                    }
+                    .swipeActions {
+                        Button { UIPasteboard.general.string = "\(c.address) | \(c.password)" } label: {
+                            Label("Copy", systemImage: "doc.on.doc")
+                        }.tint(.blue)
+                    }
+                }
+            }
+            .navigationTitle("Đã tạo \(bulkResults.count) email")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Xong") { showBulkResults = false } } }
         }
     }
 
@@ -235,6 +284,19 @@ struct KenMailView: View {
             selected = mailboxes.first { $0.id == r.id } ?? mailboxes.first
             await reload()
         } catch { self.error = error.localizedDescription }
+    }
+    private func bulkCreate() async {
+        let n = max(1, min(Int(bulkCount) ?? 10, 50))
+        bulking = true; error = nil
+        do {
+            let r = try await store.api.mailBulkCreate(count: n, prefix: bulkPrefix)
+            bulkResults = r.created
+            bulkPrefix = ""
+            await loadBoxes()
+            if !bulkResults.isEmpty { showBulkResults = true }
+            else { error = "Không tạo được hộp thư nào." }
+        } catch { self.error = error.localizedDescription }
+        bulking = false
     }
     private func sendMail() async {
         guard let sel = selected else { return }

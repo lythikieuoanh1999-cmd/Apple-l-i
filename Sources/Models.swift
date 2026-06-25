@@ -313,6 +313,15 @@ struct MailboxCreateResponse: Decodable {
     let id: Int
     let address: String
 }
+struct MailCredential: Decodable, Identifiable {
+    var id: String { address }
+    let address: String
+    let password: String
+}
+struct MailBulkResponse: Decodable {
+    let created: [MailCredential]
+    let count: Int
+}
 struct MailItem: Decodable, Identifiable {
     let id: Int
     let direction: String     // in | out

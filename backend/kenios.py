@@ -2768,6 +2768,11 @@ class MailSendIn(BaseModel):
     body: str = ""
 
 
+class MailBulkIn(BaseModel):
+    count: int = 5
+    prefix: str = ""
+
+
 def _mailbox_owned(mailbox_id: int, uid: int) -> sqlite3.Row:
     with db() as c:
         row = c.execute("SELECT * FROM mailboxes WHERE id=? AND owner_uid=?",
@@ -2775,6 +2780,30 @@ def _mailbox_owned(mailbox_id: int, uid: int) -> sqlite3.Row:
     if not row:
         raise HTTPException(status_code=404, detail="Không tìm thấy hộp thư của bạn.")
     return row
+
+
+@app.post("/mail/bulk-create")
+def mail_bulk_create(b: MailBulkIn, user=Depends(get_user)) -> dict[str, Any]:
+    """Tạo nhiều hộp thư @MAIL_DOMAIN ngẫu nhiên cùng lúc (không cần SĐT/email khác)."""
+    n = max(1, min(b.count, 50))
+    prefix = "".join(ch for ch in (b.prefix or "").strip().lower() if ch in "abcdefghijklmnopqrstuvwxyz0123456789._-")[:20]
+    created: list[dict[str, str]] = []
+    with db() as c:
+        for _ in range(n):
+            addr = ""
+            for _try in range(12):
+                local = (prefix + secrets.token_hex(4))[:40]
+                cand = f"{local}@{MAIL_DOMAIN}"
+                if not c.execute("SELECT 1 FROM mailboxes WHERE address=?", (cand,)).fetchone():
+                    addr = cand
+                    break
+            if not addr:
+                continue
+            pwd = secrets.token_urlsafe(9)
+            c.execute("INSERT INTO mailboxes(address,pw_hash,owner_uid,created_at) VALUES(?,?,?,?)",
+                      (addr, hash_pw(pwd), user["id"], int(time.time())))
+            created.append({"address": addr, "password": pwd})
+    return {"created": created, "count": len(created)}
 
 
 @app.post("/mail/create")

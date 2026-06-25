@@ -465,6 +465,10 @@ struct APIClient {
     func mailList() async throws -> MailboxListResponse {
         try decode(try await send("/mail/list"))
     }
+    func mailBulkCreate(count: Int, prefix: String = "") async throws -> MailBulkResponse {
+        try decode(try await send("/mail/bulk-create", method: "POST",
+                                  json: ["count": count, "prefix": prefix]))
+    }
     func mailInbox(mailboxId: Int) async throws -> MailInboxResponse {
         try decode(try await send("/mail/inbox?mailbox_id=\(mailboxId)"))
     }
