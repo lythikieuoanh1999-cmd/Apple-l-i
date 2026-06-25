@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum Theme {
-    static let accent = Color(red: 0.31, green: 0.55, blue: 1.0)     // xanh dương KENIOS
+    static let accent = Color(red: 0.0, green: 0.58, blue: 0.96)     // xanh Instagram #0095F6
     static let purple = Color(red: 0.65, green: 0.45, blue: 0.95)
     static let gold   = Color(red: 1.0, green: 0.84, blue: 0.0)
     static let neon   = Color(red: 0.0, green: 1.0, blue: 0.85)
