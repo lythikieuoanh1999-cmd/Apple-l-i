@@ -13,14 +13,16 @@ struct LoginView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    RoundedRectangle(cornerRadius: 18)
-                        .fill(Theme.accent)
-                        .frame(width: 76, height: 76)
-                        .overlay(Image(systemName: "square").font(.system(size: 34, weight: .bold))
-                            .foregroundStyle(.white))
-                        .padding(.top, 40)
-                    Text("KENIOS").font(.title.bold())
-                    Text("Multi-AI Assistant").font(.subheadline).foregroundStyle(.secondary)
+                    ZStack {
+                        Circle().fill(Theme.heroGradient).frame(width: 110, height: 110)
+                            .shadow(color: Theme.accent.opacity(0.5), radius: 18, y: 8)
+                        Image(systemName: "bolt.horizontal.circle.fill")
+                            .font(.system(size: 54, weight: .bold)).foregroundStyle(.white)
+                    }
+                    .padding(.top, 48)
+                    ThreeDLogoText(size: 34)
+                    Text("Mạng xã hội · Video · Live · Tiện ích")
+                        .font(.subheadline).foregroundStyle(.secondary)
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Username").font(.caption).foregroundStyle(.secondary)

@@ -36,11 +36,8 @@ struct MainTabView: View {
             MediaWebView() // xem phim · nghe nhạc qua web
                 .tabItem { Label("Giải trí", systemImage: "play.tv.fill") }
                 .tag(8)
-            WindowsSimView() // Windows giả lập (mô phỏng giao diện)
-                .tabItem { Label("Windows", systemImage: "macwindow") }
-                .tag(9)
-            ToolsView() // Tiện ích (2FA, két mật khẩu, QR, net tools)
-                .tabItem { Label("Tiện ích", systemImage: "wrench.and.screwdriver.fill") }
+            CreatorToolsView() // bộ công cụ tiện ích cho nội dung
+                .tabItem { Label("Công cụ", systemImage: "square.grid.2x2.fill") }
                 .tag(11)
             SettingsView()
                 .tabItem { Label("Cài đặt", systemImage: "gearshape.fill") }
