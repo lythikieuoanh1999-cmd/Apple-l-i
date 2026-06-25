@@ -508,9 +508,11 @@ struct APIClient {
     }
 
     // ---- KenMail (email tích hợp tài khoản + mật khẩu) ----
-    func mailCreate(local: String, password: String, domain: String? = nil) async throws -> MailboxCreateResponse {
+    func mailCreate(local: String, password: String, domain: String? = nil,
+                    phone: String? = nil) async throws -> MailboxCreateResponse {
         var body: [String: Any] = ["local": local, "password": password]
         if let domain, !domain.isEmpty { body["domain"] = domain }
+        if let phone, !phone.isEmpty { body["phone"] = phone }
         return try decode(try await send("/mail/create", method: "POST", json: body))
     }
     func mailList() async throws -> MailboxListResponse {

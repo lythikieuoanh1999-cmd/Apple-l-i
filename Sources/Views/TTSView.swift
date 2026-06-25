@@ -114,21 +114,27 @@ final class TTSEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     }
     
     private func playAdamTTS(_ text: String) {
-        // "Adam" = giọng nam trầm. Ưu tiên giọng TIẾNG VIỆT để đọc đúng tiếng Việt,
-        // hạ cao độ cho chất nam trầm (Adam). Nếu không có giọng Việt mới dùng giọng khác.
-        let u = AVSpeechUtterance(string: text)
+        // "Adam" = giọng nam trầm, BẮT BUỘC đọc tiếng Việt (không bao giờ đọc tiếng Anh).
+        // 1) Nếu máy có giọng tiếng Việt → dùng giọng đó (hạ tông cho chất nam trầm).
+        // 2) Nếu máy KHÔNG có giọng Việt → tự chuyển sang Google TTS tiếng Việt (online),
+        //    đảm bảo phát âm đúng tiếng Việt thay vì đọc sai bằng giọng tiếng Anh.
         let voices = AVSpeechSynthesisVoice.speechVoices()
         let viVoices = voices.filter { $0.language.hasPrefix("vi") }
-        let adamVoice = viVoices.first { $0.name.lowercased().contains("nam") }   // giọng nam VN nếu có
-            ?? viVoices.first { $0.quality == .enhanced || $0.quality == .premium }
+        let viVoice = viVoices.first { $0.quality == .premium }
+            ?? viVoices.first { $0.quality == .enhanced }
+            ?? viVoices.first { $0.name.lowercased().contains("nam") }
             ?? viVoices.first
-            ?? voices.first { $0.identifier.lowercased().contains("adam") }
-            ?? voices.first { $0.language.hasPrefix("en") }
-        if let v = adamVoice { u.voice = v }
-        u.rate = rate
-        u.pitchMultiplier = min(pitch, 0.85)   // trầm hơn cho chất Adam nam
-        u.volume = volume
-        synth.speak(u)
+        if let v = viVoice {
+            let u = AVSpeechUtterance(string: text)
+            u.voice = v
+            u.rate = rate
+            u.pitchMultiplier = min(pitch, 0.85)   // trầm hơn cho chất Adam nam
+            u.volume = volume
+            synth.speak(u)
+        } else {
+            // Không có giọng Việt trên máy → đọc bằng Google TTS tiếng Việt
+            playGoogleTTS(text)
+        }
     }
     
     private func playGoogleTTS(_ text: String) {

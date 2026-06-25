@@ -17,6 +17,7 @@ struct KenMailView: View {
     @State private var showCreate = false
     @State private var createLocal = ""
     @State private var createPass = ""
+    @State private var createPhone = ""
 
     // Soạn thư
     @State private var showCompose = false
@@ -117,6 +118,9 @@ struct KenMailView: View {
                             Image(systemName: "shuffle").foregroundColor(.blue)
                         }
                     }
+
+                    TextField("Số điện thoại (tuỳ chọn)", text: $createPhone)
+                        .keyboardType(.phonePad)
                 }
                 
                 Section {
@@ -539,8 +543,9 @@ struct KenMailView: View {
             error = "Tên hộp thư không trống, mật khẩu ≥ 6 ký tự."; return
         }
         do {
-            let r = try await store.api.mailCreate(local: local, password: createPass, domain: selectedDomain)
-            createLocal = ""; createPass = ""
+            let r = try await store.api.mailCreate(local: local, password: createPass,
+                                                   domain: selectedDomain, phone: createPhone)
+            createLocal = ""; createPass = ""; createPhone = ""
             showCreate = false
             await loadBoxes()
             selected = mailboxes.first { $0.id == r.id } ?? mailboxes.first

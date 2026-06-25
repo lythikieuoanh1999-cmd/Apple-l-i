@@ -328,6 +328,7 @@ def init_db() -> None:
                 address TEXT UNIQUE NOT NULL,
                 pw_hash TEXT NOT NULL,
                 owner_uid INTEGER,
+                phone TEXT,
                 created_at INTEGER
             );
             CREATE TABLE IF NOT EXISTS mails(
@@ -610,6 +611,7 @@ def _migrate() -> None:
         ("conversations", "pinned", "INTEGER DEFAULT 0"),
         ("conversations", "share_token", "TEXT"),
         ("messages", "tokens_used", "INTEGER"),
+        ("mailboxes", "phone", "TEXT"),
     ]
     with db() as c:
         for table, col, ddl in migrations:
@@ -3068,6 +3070,7 @@ class MailCreateIn(BaseModel):
     local: str            # phần trước @ (vd "cong" → cong@kenios.store)
     password: str
     domain: Optional[str] = None
+    phone: Optional[str] = None
 
 
 class MailSendIn(BaseModel):
@@ -3186,27 +3189,29 @@ def mail_create(b: MailCreateIn, user=Depends(get_user)) -> dict[str, Any]:
         dom = MAIL_DOMAIN
 
     address = f"{local}@{dom}"
+    phone = (b.phone or "").strip()
     with db() as c:
         if c.execute("SELECT 1 FROM mailboxes WHERE address=?", (address,)).fetchone():
             raise HTTPException(status_code=409, detail="Địa chỉ này đã tồn tại.")
         cur = c.execute(
-            "INSERT INTO mailboxes(address,pw_hash,owner_uid,created_at) VALUES(?,?,?,?)",
-            (address, hash_pw(b.password), user["id"], int(time.time())))
+            "INSERT INTO mailboxes(address,pw_hash,owner_uid,phone,created_at) VALUES(?,?,?,?,?)",
+            (address, hash_pw(b.password), user["id"], phone, int(time.time())))
         mid = cur.lastrowid
-    return {"id": mid, "address": address}
+    return {"id": mid, "address": address, "phone": phone}
 
 
 @app.get("/mail/list")
 def mail_list(user=Depends(get_user)) -> dict[str, Any]:
     with db() as c:
         rows = c.execute(
-            "SELECT id,address,created_at FROM mailboxes WHERE owner_uid=? ORDER BY id DESC",
+            "SELECT id,address,phone,created_at FROM mailboxes WHERE owner_uid=? ORDER BY id DESC",
             (user["id"],)).fetchall()
         out = []
         for r in rows:
             unseen = c.execute("SELECT COUNT(*) n FROM mails WHERE mailbox_id=? AND seen=0",
                                (r["id"],)).fetchone()["n"]
             out.append({"id": r["id"], "address": r["address"],
+                        "phone": (r["phone"] if "phone" in r.keys() else None),
                         "created_at": r["created_at"], "unseen": unseen})
     return {"mailboxes": out, "domain": MAIL_DOMAIN}
 

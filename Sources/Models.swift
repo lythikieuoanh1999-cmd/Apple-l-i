@@ -302,6 +302,7 @@ struct TranslateResponse: Decodable {
 struct Mailbox: Decodable, Identifiable {
     let id: Int
     let address: String
+    let phone: String?
     let createdAt: Int?
     let unseen: Int?
 }

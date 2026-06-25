@@ -11,10 +11,16 @@ enum Theme {
         colors: [Color(.systemBackground), Color(.secondarySystemBackground)],
         startPoint: .top, endPoint: .bottom)
 
-    // Gradient cho nút chính
+    // Gradient cho nút chính (vibrant hơn: xanh ngọc → xanh dương → tím)
     static let buttonGradient = LinearGradient(
-        colors: [accent, purple],
+        colors: [Color(red: 0.0, green: 0.78, blue: 0.92), accent, purple],
         startPoint: .leading, endPoint: .trailing)
+
+    // Gradient nền sang trọng cho header / màn hình đăng nhập
+    static let heroGradient = LinearGradient(
+        colors: [accent.opacity(0.9), purple.opacity(0.85),
+                 Color(red: 0.95, green: 0.45, blue: 0.7).opacity(0.8)],
+        startPoint: .topLeading, endPoint: .bottomTrailing)
 
     // Màu gói cước
     static func planColor(_ plan: String) -> Color {
@@ -38,6 +44,7 @@ enum Theme {
 
 func providerColor(_ id: String) -> Color {
     switch id {
+    case "kenios":      return Theme.gold   // AI riêng — màu vàng nổi bật (đỉnh)
     case "gemini":      return .blue
     case "openai":      return .green
     case "anthropic":   return Theme.purple
