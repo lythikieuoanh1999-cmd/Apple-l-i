@@ -15,6 +15,13 @@ struct FriendsView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                // Banner sang trọng
+                KHeroHeader(icon: "person.2.fill",
+                            title: "Bạn bè",
+                            subtitle: "Kết bạn · Lời mời · Nhắn tin trực tiếp")
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+
                 // Segmented picker
                 Picker("", selection: $selectedSegment) {
                     Text("Bạn bè").tag(0)

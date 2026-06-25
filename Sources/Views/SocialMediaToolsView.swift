@@ -58,6 +58,13 @@ struct SocialMediaToolsView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                // Banner sang trọng
+                KHeroHeader(icon: "globe.badge.ellipsis",
+                            title: "Mạng xã hội",
+                            subtitle: "Sáng tạo nội dung · Tải video · Live đa nền tảng")
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+
                 // Segmented picker
                 Picker("", selection: $selectedSegment) {
                     Text("Sáng tạo").tag(0)

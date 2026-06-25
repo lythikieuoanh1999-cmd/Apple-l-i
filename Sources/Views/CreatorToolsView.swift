@@ -6,6 +6,13 @@ struct CreatorToolsView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    KHeroHeader(icon: "square.grid.2x2.fill",
+                                title: "Công cụ",
+                                subtitle: "Bộ tiện ích sáng tạo · offline, nhanh gọn")
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                }
                 Section("Ảnh & Video") {
                     navLink("Công cụ ảnh (tách nền · nén · làm nét)", "wand.and.stars", ImageToolsView())
                 }
