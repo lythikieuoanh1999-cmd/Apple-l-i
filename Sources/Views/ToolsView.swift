@@ -70,6 +70,11 @@ struct ToolsView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("AI") {
+                    NavigationLink { AssistantView() } label: {
+                        Label("Trợ lý rảnh tay (giọng nói + streaming)", systemImage: "waveform.circle.fill")
+                    }
+                }
                 Section("Bảo mật") {
                     NavigationLink { AuthenticatorView() } label: {
                         Label("Authenticator (mã 2FA)", systemImage: "lock.shield")

@@ -39,7 +39,7 @@ from typing import Any, Optional
 import httpx
 from fastapi import FastAPI, Request, HTTPException, Header, Depends, UploadFile, File as FastAPIFile, Form, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 # ========================= Cấu hình =========================
@@ -1533,6 +1533,129 @@ async def chat(b: ChatIn, user=Depends(get_user)) -> dict[str, Any]:
             "total": total_tokens,
         },
     }
+
+
+async def call_provider_stream(provider: str, api_key: str, model: Optional[str],
+                               history: list[dict[str, Any]], user_text: str,
+                               system_override: Optional[str] = None):
+    """Gọi AI ở chế độ streaming — sinh từng đoạn text (cho OpenAI-compatible, Gemini, Anthropic).
+    Provider khác → fallback gọi 1 lần và trả nguyên câu."""
+    if provider not in PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"AI '{provider}' không được hỗ trợ.")
+    p = PROVIDERS[provider]
+    model = model or p["default_model"]
+    kind = p["kind"]
+    sys_msg = system_override or DEFAULT_SYSTEM
+
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+        if kind == "openai":
+            msgs = [{"role": "system", "content": sys_msg}]
+            msgs += [{"role": m["role"], "content": m["content"]} for m in history]
+            msgs.append({"role": "user", "content": user_text})
+            async with client.stream("POST", f"{p['base']}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}",
+                         "HTTP-Referer": "https://kenios.app", "X-Title": "KENIOS"},
+                json={"model": model, "messages": msgs, "stream": True}) as r:
+                if r.status_code >= 400:
+                    txt = (await r.aread()).decode("utf-8", "replace")[:300]
+                    raise HTTPException(status_code=502, detail=f"{provider} lỗi {r.status_code}: {txt}")
+                async for line in r.aiter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        delta = json.loads(data)["choices"][0]["delta"].get("content")
+                        if delta:
+                            yield delta
+                    except Exception:
+                        continue
+            return
+
+        if kind == "gemini":
+            contents = []
+            for m in history:
+                contents.append({"role": "model" if m["role"] == "assistant" else "user",
+                                 "parts": [{"text": m["content"]}]})
+            contents.append({"role": "user", "parts": [{"text": user_text}]})
+            url = f"{p['base']}/models/{model}:streamGenerateContent?alt=sse&key={api_key}"
+            payload = {"contents": contents, "systemInstruction": {"parts": [{"text": sys_msg}]}}
+            async with client.stream("POST", url, json=payload) as r:
+                if r.status_code >= 400:
+                    txt = (await r.aread()).decode("utf-8", "replace")[:300]
+                    raise HTTPException(status_code=502, detail=f"gemini lỗi {r.status_code}: {txt}")
+                async for line in r.aiter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if not data:
+                        continue
+                    try:
+                        t = json.loads(data)["candidates"][0]["content"]["parts"][0]["text"]
+                        if t:
+                            yield t
+                    except Exception:
+                        continue
+            return
+
+        if kind == "anthropic":
+            msgs = [{"role": m["role"], "content": m["content"]} for m in history]
+            msgs.append({"role": "user", "content": user_text})
+            async with client.stream("POST", f"{p['base']}/messages",
+                headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
+                json={"model": model, "max_tokens": 8096, "system": sys_msg,
+                      "messages": msgs, "stream": True}) as r:
+                if r.status_code >= 400:
+                    txt = (await r.aread()).decode("utf-8", "replace")[:300]
+                    raise HTTPException(status_code=502, detail=f"anthropic lỗi {r.status_code}: {txt}")
+                async for line in r.aiter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    try:
+                        obj = json.loads(data)
+                        if obj.get("type") == "content_block_delta":
+                            t = obj.get("delta", {}).get("text")
+                            if t:
+                                yield t
+                    except Exception:
+                        continue
+            return
+
+    # Fallback: provider không hỗ trợ streaming ở đây → gọi 1 lần
+    full = await call_provider(provider, api_key, model, history, user_text,
+                               system_override=system_override)
+    yield full
+
+
+@app.post("/chat/stream")
+async def chat_stream(b: ChatIn, user=Depends(get_user)):
+    """Chat dạng streaming (trả lời hiện dần). Chỉ hỗ trợ text; ảnh/file dùng /chat."""
+    if not b.message:
+        raise HTTPException(status_code=400, detail="Cần 'message' cho chế độ streaming.")
+    key = get_user_key(user["id"], b.provider, b.api_key)
+    conv_id = b.conversation_id or new_conversation(user["id"], b.provider, b.message)
+    history = load_history(conv_id, user["id"]) if b.conversation_id else []
+    final_system = b.system or DEFAULT_SYSTEM
+
+    async def gen():
+        full = ""
+        try:
+            async for chunk in call_provider_stream(b.provider, key, b.model, history,
+                                                    b.message, final_system):
+                full += chunk
+                yield "data: " + json.dumps({"delta": chunk}, ensure_ascii=False) + "\n\n"
+        except HTTPException as e:
+            yield "data: " + json.dumps({"error": str(e.detail)}, ensure_ascii=False) + "\n\n"
+        except Exception as e:
+            yield "data: " + json.dumps({"error": str(e)}, ensure_ascii=False) + "\n\n"
+        if full:
+            save_message(conv_id, "user", b.message, tokens=estimate_tokens(b.message))
+            save_message(conv_id, "assistant", full, tokens=estimate_tokens(full))
+        yield "data: " + json.dumps({"done": True, "conversation_id": conv_id}) + "\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
 
 
 @app.post("/chat/ensemble")

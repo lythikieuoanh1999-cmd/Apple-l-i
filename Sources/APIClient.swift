@@ -75,6 +75,40 @@ struct APIClient {
         if let code, !code.isEmpty { body["code"] = code }
         return try decode(try await send("/auth/register", method: "POST", json: body, auth: false))
     }
+    // ---- Chat streaming (trả lời hiện dần) ----
+    /// Trả về conversationId. Mỗi đoạn text gọi onDelta trên main actor.
+    @discardableResult
+    func chatStream(provider: String, message: String, conversationId: Int?, model: String? = nil,
+                    system: String? = nil, onDelta: @escaping (String) -> Void) async throws -> Int {
+        var req = URLRequest(url: try makeURL("/chat/stream"))
+        req.httpMethod = "POST"
+        req.timeoutInterval = 180
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        var body: [String: Any] = ["provider": provider, "message": message]
+        if let conversationId { body["conversation_id"] = conversationId }
+        if let model { body["model"] = model }
+        if let system { body["system"] = system }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (bytes, resp) = try await URLSession.shared.bytes(for: req)
+        guard let http = resp as? HTTPURLResponse else { throw APIError.message("Phản hồi không hợp lệ.") }
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.message("Lỗi máy chủ (\(http.statusCode)).")
+        }
+        var convId = conversationId ?? 0
+        for try await line in bytes.lines {
+            guard line.hasPrefix("data:") else { continue }
+            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+            guard !payload.isEmpty, let d = payload.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { continue }
+            if let delta = obj["delta"] as? String { onDelta(delta) }
+            if let err = obj["error"] as? String { throw APIError.message(err) }
+            if let cid = obj["conversation_id"] as? Int { convId = cid }
+        }
+        return convId
+    }
+
     // Gửi mã xác nhận (OTP) qua email
     func sendOtp(email: String, purpose: String = "register") async throws -> OtpSendResponse {
         try decode(try await send("/auth/send-otp", method: "POST",
