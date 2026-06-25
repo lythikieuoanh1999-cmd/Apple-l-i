@@ -76,6 +76,27 @@ private let kLiveEvents: [LiveEventType] = [
     .init(id: "share",   label: "Chia sẻ",     icon: "square.and.arrow.up.fill", template: "Cảm ơn {name} đã chia sẻ live"),
 ]
 
+// ======================== Kiểu giọng (preset cao độ / tốc độ) ========================
+struct VoiceStyle: Identifiable, Hashable {
+    let id: String
+    let label: String
+    let icon: String
+    let pitch: Float
+    let rate: Float
+}
+
+// rate chuẩn ~0.5 (AVSpeechUtteranceDefaultSpeechRate). Anime = cao độ cao + nhanh hơn chút.
+let kVoiceStyles: [VoiceStyle] = [
+    .init(id: "normal",   label: "Thường",    icon: "person.wave.2",        pitch: 1.0,  rate: 0.50),
+    .init(id: "anime_f",  label: "Anime nữ",  icon: "sparkles",             pitch: 1.7,  rate: 0.54),
+    .init(id: "anime_m",  label: "Anime nam", icon: "bolt.fill",            pitch: 0.75, rate: 0.52),
+    .init(id: "child",    label: "Trẻ em",    icon: "figure.child",         pitch: 1.9,  rate: 0.50),
+    .init(id: "warm",     label: "Trầm ấm",   icon: "moon.zzz.fill",        pitch: 0.82, rate: 0.46),
+    .init(id: "fast",     label: "Nhanh",     icon: "hare.fill",            pitch: 1.05, rate: 0.60),
+    .init(id: "slow",     label: "Chậm rõ",   icon: "tortoise.fill",        pitch: 1.0,  rate: 0.40),
+    .init(id: "robot",    label: "Robot",     icon: "cpu",                  pitch: 0.6,  rate: 0.48),
+]
+
 // ======================== Giao diện ========================
 struct TTSView: View {
     @EnvironmentObject var store: AppStore
@@ -86,6 +107,10 @@ struct TTSView: View {
     @State private var content = ""
     @State private var selectedEvent = "gift"
     @State private var search = ""
+
+    // ----- Dịch tự động sang tiếng Việt + lọc giọng -----
+    @State private var translateToVi = true
+    @State private var onlyVietnameseVoices = false
 
     // ----- TikTok Live: tự động đọc bình luận (như TikFinity) -----
     @State private var tiktokId = ""
@@ -98,13 +123,20 @@ struct TTSView: View {
     @State private var liveFeed: [TikTokLiveEvent] = []
 
     private var voices: [AVSpeechSynthesisVoice] {
-        let all = AVSpeechSynthesisVoice.speechVoices()
+        var all = AVSpeechSynthesisVoice.speechVoices()
             .sorted { ($0.language, $0.name) < ($1.language, $1.name) }
+        if onlyVietnameseVoices {
+            all = all.filter { $0.language.hasPrefix("vi") }
+        }
         guard !search.isEmpty else { return all }
         return all.filter {
             $0.name.localizedCaseInsensitiveContains(search) ||
             $0.language.localizedCaseInsensitiveContains(search)
         }
+    }
+
+    private var vietnameseVoiceCount: Int {
+        AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix("vi") }.count
     }
 
     var body: some View {
@@ -201,7 +233,7 @@ struct TTSView: View {
                             textField(selectedEvent == "gift" ? "Quà (content)" : "Nội dung bình luận", $content)
                         }
                         Button {
-                            tts.speak(renderEvent())
+                            speakTranslated(renderEvent())
                         } label: {
                             Label("Đọc thông báo", systemImage: "play.fill").frame(maxWidth: .infinity)
                         }
@@ -211,12 +243,12 @@ struct TTSView: View {
                     }
 
                     // ----- Đọc văn bản tự do -----
-                    section("Đọc văn bản") {
+                    section("Đọc văn bản (tự dịch sang tiếng Việt)") {
                         TextEditor(text: $freeText)
                             .font(.body).frame(minHeight: 110)
                             .padding(6).background(Color(.secondarySystemBackground))
                             .clipShape(RoundedRectangle(cornerRadius: 10))
-                        Button { tts.speak(freeText) } label: {
+                        Button { speakTranslated(freeText) } label: {
                             Label("Đọc", systemImage: "play.fill").frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
@@ -237,6 +269,26 @@ struct TTSView: View {
 
                     // ----- Tinh chỉnh giọng -----
                     section("Tuỳ chỉnh giọng") {
+                        Toggle(isOn: $translateToVi) {
+                            Label("Tự dịch sang tiếng Việt khi đọc", systemImage: "character.bubble")
+                                .font(.subheadline)
+                        }.tint(Theme.accent)
+
+                        Text("Kiểu giọng").font(.caption).foregroundStyle(.secondary)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack {
+                                ForEach(kVoiceStyles) { s in
+                                    let on = (tts.pitch == s.pitch && tts.rate == s.rate)
+                                    Button { tts.pitch = s.pitch; tts.rate = s.rate } label: {
+                                        Label(s.label, systemImage: s.icon).font(.caption)
+                                            .padding(.horizontal, 12).padding(.vertical, 8)
+                                            .background(on ? Theme.accent.opacity(0.25) : Color(.secondarySystemBackground))
+                                            .clipShape(Capsule())
+                                    }.buttonStyle(.plain)
+                                }
+                            }
+                        }
+
                         slider("Tốc độ", value: $tts.rate,
                                range: AVSpeechUtteranceMinimumSpeechRate...AVSpeechUtteranceMaximumSpeechRate)
                         slider("Cao độ", value: $tts.pitch, range: 0.5...2.0)
@@ -244,7 +296,10 @@ struct TTSView: View {
                     }
 
                     // ----- Chọn giọng -----
-                    section("Giọng đọc (\(AVSpeechSynthesisVoice.speechVoices().count) giọng)") {
+                    section("Giọng đọc (\(AVSpeechSynthesisVoice.speechVoices().count) giọng · \(vietnameseVoiceCount) tiếng Việt)") {
+                        Toggle(isOn: $onlyVietnameseVoices) {
+                            Label("Chỉ hiện giọng tiếng Việt", systemImage: "flag.fill").font(.subheadline)
+                        }.tint(Theme.accent)
                         textField("Tìm theo tên / ngôn ngữ (vd: vi, English)", $search)
                         VStack(spacing: 0) {
                             ForEach(voices, id: \.identifier) { v in
@@ -329,7 +384,10 @@ struct TTSView: View {
                     if let e = r.error { liveError = e }
                     for ev in r.events {
                         liveFeed.append(ev)
-                        if readTypes.contains(ev.type) { tts.speak(renderLive(ev)) }
+                        if readTypes.contains(ev.type) {
+                            let text = await liveSpeechText(ev)
+                            tts.speak(text)
+                        }
                     }
                     if liveFeed.count > 120 { liveFeed.removeFirst(liveFeed.count - 120) }
                     lastEventId = r.last
@@ -348,6 +406,39 @@ struct TTSView: View {
         liveStatus = ""
         let id = tiktokId.trimmingCharacters(in: .whitespacesAndNewlines)
         Task { try? await store.api.tiktokLiveDisconnect(username: id) }
+    }
+
+    /// Dịch nội dung 1 sự kiện live sang tiếng Việt (giữ tên người + mẫu câu Việt), rồi trả về câu để đọc.
+    private func liveSpeechText(_ ev: TikTokLiveEvent) async -> String {
+        var content = ev.content
+        if translateToVi, !content.isEmpty {
+            if let tr = try? await store.api.translate(text: content), !tr.text.isEmpty {
+                content = tr.text
+            }
+        }
+        let e = kLiveEvents.first { $0.id == ev.type } ?? kLiveEvents[2]
+        let name = ev.name.isEmpty ? "bạn" : ev.name
+        return e.template
+            .replacingOccurrences(of: "{name}", with: name)
+            .replacingOccurrences(of: "{content}", with: content)
+            .trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Đọc 1 đoạn text: nếu bật dịch thì dịch sang tiếng Việt trước rồi mới đọc.
+    private func speakTranslated(_ text: String) {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        if translateToVi {
+            Task {
+                if let tr = try? await store.api.translate(text: t), !tr.text.isEmpty {
+                    tts.speak(tr.text)
+                } else {
+                    tts.speak(t)
+                }
+            }
+        } else {
+            tts.speak(t)
+        }
     }
 
     // ----- helpers -----

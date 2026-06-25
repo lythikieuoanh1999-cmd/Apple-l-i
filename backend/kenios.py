@@ -2704,6 +2704,42 @@ async def tiktok_live_disconnect(b: TikTokLiveIn, user=Depends(get_user)) -> dic
     return {"ok": True}
 
 
+# ======================== Dịch sang tiếng Việt (TTS đa ngôn ngữ) ========================
+class TranslateIn(BaseModel):
+    text: str
+    target: str = "vi"
+    source: str = "auto"
+
+
+@app.post("/translate")
+async def translate_text(b: TranslateIn, user=Depends(get_user)) -> dict[str, Any]:
+    """Dịch văn bản sang tiếng Việt (mặc định) — dùng cho đọc TTS đa ngôn ngữ.
+
+    Dùng endpoint dịch miễn phí (không cần API key). Nếu lỗi sẽ trả lại nguyên văn.
+    """
+    text = (b.text or "").strip()
+    if not text:
+        return {"text": "", "source": b.source}
+    target = (b.target or "vi").strip() or "vi"
+    source = (b.source or "auto").strip() or "auto"
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(
+                "https://translate.googleapis.com/translate_a/single",
+                params={"client": "gtx", "sl": source, "tl": target, "dt": "t", "q": text},
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+        if r.status_code == 200:
+            data = r.json()
+            segments = data[0] if isinstance(data, list) and data else []
+            out = "".join(seg[0] for seg in segments if seg and seg[0])
+            detected = data[2] if isinstance(data, list) and len(data) > 2 else source
+            return {"text": out or text, "source": detected}
+    except Exception:
+        pass
+    return {"text": text, "source": source}
+
+
 # ======================== Thanh toán / Credits ========================
 PACKAGES = {
     "pro":   {"credits": 9999,  "amount": 199000, "label": "Gói PRO — 199.000đ (9.999 credits)"},

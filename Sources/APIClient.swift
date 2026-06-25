@@ -444,6 +444,12 @@ struct APIClient {
                            json: ["username": username])
     }
 
+    // ---- Dịch sang tiếng Việt (cho TTS đa ngôn ngữ) ----
+    func translate(text: String, target: String = "vi", source: String = "auto") async throws -> TranslateResponse {
+        try decode(try await send("/translate", method: "POST",
+                                  json: ["text": text, "target": target, "source": source]))
+    }
+
     func encryptCode(code: String, language: String, level: String) async throws -> EncryptResponse {
         let body: [String: Any] = ["code": code, "language": language, "level": level]
         return try decode(try await send("/code/encrypt", method: "POST", json: body))

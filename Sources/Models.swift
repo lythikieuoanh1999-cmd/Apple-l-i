@@ -293,6 +293,11 @@ struct TikTokLiveEventsResponse: Decodable {
     let last: Int
 }
 
+struct TranslateResponse: Decodable {
+    let text: String
+    let source: String?
+}
+
 struct EncryptResponse: Decodable {
     let result: String
 }
