@@ -132,6 +132,15 @@ struct KenMailView: View {
                         webmailURL = "https://mail.kenios.store"
                     }.font(.caption)
                 }
+                Section("4 bản ghi DNS cần thêm trên iNET (bấm để copy)") {
+                    dnsRow("MX", "@", "mx.inet.vn")
+                    dnsRow("A", "mail", "103.57.220.204")
+                    dnsRow("TXT (SPF)", "@", "v=spf1 a mx include:_spf.inet.vn ~all")
+                    dnsRow("TXT (DKIM)", "keniosstore._domainkey",
+                           "v=DKIM1; k=rsa; p=<DÁN CHUỖI DKIM DÀI TỪ TRANG iNET>")
+                    Text("Thêm xong → đợi 5–30 phút → bấm Verify trên iNET → tạo email được. DKIM phải copy đúng chuỗi dài hiển thị trong trang iNET của bạn.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
                 Section {
                     Text("Mở trang iNET để tạo email tên miền @kenios.store. Cần thêm bản ghi DNS (MX/A/SPF/DKIM) và verify trên iNET trước khi tạo tài khoản.")
                         .font(.caption2).foregroundStyle(.secondary)
@@ -140,6 +149,20 @@ struct KenMailView: View {
             .navigationTitle("Cài đặt KenMail")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Xong") { showSettings = false } } }
+        }
+    }
+
+    private func dnsRow(_ type: String, _ name: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text(type).font(.caption.bold()).foregroundStyle(Theme.accent)
+                Text("Tên: \(name)").font(.caption2).foregroundStyle(.secondary)
+                Spacer()
+                Button { UIPasteboard.general.string = value } label: {
+                    Image(systemName: "doc.on.doc").font(.caption2)
+                }
+            }
+            Text(value).font(.system(.caption2, design: .monospaced)).textSelection(.enabled)
         }
     }
 
