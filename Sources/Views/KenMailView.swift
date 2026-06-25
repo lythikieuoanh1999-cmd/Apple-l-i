@@ -40,7 +40,6 @@ struct KenMailView: View {
     @State private var showSettings = false
     @AppStorage("kenmail_inet_url") private var inetURL = "https://portal.inet.vn"
     @AppStorage("kenmail_webmail_url") private var webmailURL = "https://mail.kenios.store"
-    @AppStorage("kenmail_admin_url") private var adminURL = "https://mail.kenios.store/admin"
     // Bản ghi DNS sửa được (lưu JSON)
     @AppStorage("kenmail_dns_records") private var dnsRaw = ""
     @State private var dnsRecords: [DnsRecord] = []
@@ -95,10 +94,7 @@ struct KenMailView: View {
                             Link(destination: u) { Label("Tạo email trên iNET", systemImage: "link") }
                         }
                         if let u = URL(string: webmailURL) {
-                            Link(destination: u) { Label("Webmail (user)", systemImage: "envelope.circle") }
-                        }
-                        if let u = URL(string: adminURL) {
-                            Link(destination: u) { Label("Webmail Admin", systemImage: "person.crop.circle.badge.checkmark") }
+                            Link(destination: u) { Label("Mở Webmail", systemImage: "envelope.circle") }
                         }
                         Button { showSettings = true } label: { Label("Cài đặt KenMail", systemImage: "gearshape") }
                         if !mailboxes.isEmpty {
@@ -198,11 +194,8 @@ struct KenMailView: View {
                     if let u = URL(string: inetURL) {
                         Link(destination: u) { Label("Mở trang tạo email (iNET)", systemImage: "link") }
                     }
-                    if let u = URL(string: adminURL) {
-                        Link(destination: u) { Label("Webmail Admin (tạo email · catch-all)", systemImage: "person.crop.circle.badge.checkmark") }
-                    }
                     if let u = URL(string: webmailURL) {
-                        Link(destination: u) { Label("Webmail (user)", systemImage: "envelope.circle") }
+                        Link(destination: u) { Label("Mở Webmail", systemImage: "envelope.circle") }
                     }
                 }
                 Section("Chỉnh liên kết") {
@@ -213,13 +206,7 @@ struct KenMailView: View {
                             .keyboardType(.URL)
                     }
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Webmail Admin (tạo email)").font(.caption).foregroundStyle(.secondary)
-                        TextField("https://mail.kenios.store/admin", text: $adminURL)
-                            .textInputAutocapitalization(.never).autocorrectionDisabled()
-                            .keyboardType(.URL)
-                    }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Webmail (user)").font(.caption).foregroundStyle(.secondary)
+                        Text("Webmail").font(.caption).foregroundStyle(.secondary)
                         TextField("https://mail.kenios.store", text: $webmailURL)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
                             .keyboardType(.URL)
@@ -227,7 +214,6 @@ struct KenMailView: View {
                     Button("Đặt lại mặc định") {
                         inetURL = "https://portal.inet.vn"
                         webmailURL = "https://mail.kenios.store"
-                        adminURL = "https://mail.kenios.store/admin"
                     }.font(.caption)
                 }
                 Section("Bản ghi DNS (sửa tên/loại/giá trị · bấm copy)") {

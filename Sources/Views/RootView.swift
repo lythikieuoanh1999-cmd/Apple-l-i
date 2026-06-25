@@ -21,12 +21,6 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $store.tab) {
-            ChatView()
-                .tabItem { Label("Trò chuyện", systemImage: "bubble.left.and.bubble.right.fill") }
-                .tag(0)
-            CodeToolsView()
-                .tabItem { Label("Lập trình", systemImage: "chevron.left.forwardslash.chevron.right") }
-                .tag(1)
             SocialMediaToolsView()
                 .tabItem { Label("Mạng xã hội", systemImage: "globe.badge.ellipsis") }
                 .tag(2)
@@ -36,19 +30,16 @@ struct MainTabView: View {
             FriendsView()
                 .tabItem { Label("Bạn bè", systemImage: "person.2.fill") }
                 .tag(4)
-            TTSView() // ← THÊM: module đọc văn bản (TTS)
+            TTSView() // module đọc văn bản (TTS)
                 .tabItem { Label("Đọc", systemImage: "speaker.wave.2.fill") }
                 .tag(7)
-            MediaWebView() // ← THÊM: xem phim · nghe nhạc qua web
+            MediaWebView() // xem phim · nghe nhạc qua web
                 .tabItem { Label("Giải trí", systemImage: "play.tv.fill") }
                 .tag(8)
-            WindowsSimView() // ← THÊM: Windows giả lập (mô phỏng giao diện)
+            WindowsSimView() // Windows giả lập (mô phỏng giao diện)
                 .tabItem { Label("Windows", systemImage: "macwindow") }
                 .tag(9)
-            KenMailView() // ← THÊM: email tích hợp KenMail (@kenios.store)
-                .tabItem { Label("KenMail", systemImage: "envelope.fill") }
-                .tag(10)
-            ToolsView() // ← THÊM: Tiện ích (2FA, két mật khẩu, QR, net tools)
+            ToolsView() // Tiện ích (2FA, két mật khẩu, QR, net tools)
                 .tabItem { Label("Tiện ích", systemImage: "wrench.and.screwdriver.fill") }
                 .tag(11)
             SettingsView()
@@ -60,6 +51,7 @@ struct MainTabView: View {
                     .tag(6)
             }
         }
+        .onAppear { if store.tab == 0 || store.tab == 1 || store.tab == 10 { store.tab = 2 } }
         .task {
             await store.loadProviders()
             await store.loadKeys()

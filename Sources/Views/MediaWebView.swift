@@ -30,6 +30,21 @@ struct BrowserWebView: UIViewRepresentable {
         cfg.allowsInlineMediaPlayback = true
         cfg.mediaTypesRequiringUserActionForPlayback = []
         cfg.allowsPictureInPictureMediaPlayback = true
+
+        // Bypass Page Visibility API — ngăn YouTube/web pause video khi chuyển app hoặc khoá màn hình
+        let visibilityScript = WKUserScript(
+            source: """
+            Object.defineProperty(document, 'hidden', { get: () => false });
+            Object.defineProperty(document, 'visibilityState', { get: () => 'visible' });
+            document.addEventListener('visibilitychange', function(e) {
+                e.stopImmediatePropagation();
+            }, true);
+            """,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        cfg.userContentController.addUserScript(visibilityScript)
+
         let wv = WKWebView(frame: .zero, configuration: cfg)
         wv.allowsBackForwardNavigationGestures = true
         wv.navigationDelegate = context.coordinator

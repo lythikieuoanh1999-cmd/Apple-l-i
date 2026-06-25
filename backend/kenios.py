@@ -342,15 +342,6 @@ def init_db() -> None:
                 created_at INTEGER,
                 seen INTEGER DEFAULT 0
             );
-            CREATE TABLE IF NOT EXISTS temp_mails(
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                addr TEXT NOT NULL,
-                from_addr TEXT,
-                subject TEXT,
-                body TEXT,
-                created_at INTEGER
-            );
-            CREATE INDEX IF NOT EXISTS idx_temp_addr ON temp_mails(addr);
             CREATE TABLE IF NOT EXISTS mail_domains(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 domain TEXT UNIQUE NOT NULL,
@@ -1289,95 +1280,6 @@ class DirectMessageIn(BaseModel):
 def health() -> dict[str, Any]:
     return {"status": "ok", "time": int(time.time()), "version": "4.2",
             "providers": len(PROVIDERS)}
-
-
-# ======================== Web temp-mail (catch-all · như cenios.net) ========================
-@app.get("/tempmail/inbox")
-def tempmail_inbox(addr: str, after: int = 0) -> dict[str, Any]:
-    a = (addr or "").strip().lower()
-    if "@" not in a:
-        a = f"{a}@{MAIL_DOMAIN}"
-    with db() as c:
-        rows = c.execute(
-            "SELECT id,from_addr,subject,body,created_at FROM temp_mails "
-            "WHERE addr=? AND id>? ORDER BY id DESC LIMIT 100", (a, after)).fetchall()
-    return {"addr": a, "mails": [dict(r) for r in rows]}
-
-
-_TEMPMAIL_HTML = """<!doctype html><html lang="vi"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>KenMail — Email tạm</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif}
-body{background:#0b0f1a;color:#e8ecf4;min-height:100vh;padding:18px}
-.wrap{max-width:560px;margin:0 auto}
-h1{font-size:20px;text-align:center;margin:8px 0 16px}
-.logo{color:#7c5cff;font-weight:800}
-.card{background:#141a2b;border-radius:14px;padding:16px;margin-bottom:14px}
-.addr{display:flex;gap:8px;align-items:center}
-.addr input{flex:1;background:#0b0f1a;border:1px solid #28304a;color:#9be7ff;border-radius:10px;padding:12px;font-family:monospace;font-size:15px}
-button{background:#7c5cff;color:#fff;border:none;border-radius:10px;padding:12px 14px;font-weight:700;cursor:pointer}
-button.alt{background:#1f2740}
-.row{display:flex;gap:8px;margin-top:10px}
-.muted{color:#8a93a8;font-size:13px}
-.mail{background:#0f1422;border:1px solid #222b44;border-radius:12px;padding:12px;margin-top:10px}
-.mail .f{font-size:13px;color:#9be7ff}
-.mail .s{font-weight:700;margin:4px 0}
-.mail .b{font-size:13px;color:#c4ccdc;white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:auto}
-.code{display:inline-block;background:#2a2150;color:#cdb6ff;padding:4px 10px;border-radius:8px;font-family:monospace;font-size:16px;margin-top:6px}
-.empty{text-align:center;color:#69718a;padding:30px 0}
-</style></head><body><div class="wrap">
-<h1><span class="logo">KenMail</span> · Email tạm</h1>
-<div class="card">
-  <div class="muted">Địa chỉ email của bạn (mọi thư gửi tới sẽ hiện bên dưới):</div>
-  <div class="addr" style="margin-top:8px">
-    <input id="addr" readonly>
-    <button onclick="copyAddr()">Sao chép</button>
-  </div>
-  <div class="row">
-    <button class="alt" onclick="randomAddr()">Tạo ngẫu nhiên</button>
-    <button class="alt" onclick="customAddr()">Đặt tên</button>
-  </div>
-</div>
-<div class="card">
-  <div style="display:flex;justify-content:space-between;align-items:center">
-    <b>Hộp thư đến</b><span class="muted" id="status">Tự làm mới 5 giây…</span>
-  </div>
-  <div id="inbox"><div class="empty">📭 Đang chờ email…</div></div>
-</div>
-<div class="muted" style="text-align:center">Email tạm · ẩn danh · không cần đăng nhập. Dùng để nhận mã xác minh.</div>
-</div>
-<script>
-var DOMAIN="__DOMAIN__";
-function rnd(n){var s="abcdefghijklmnopqrstuvwxyz0123456789",o="";for(var i=0;i<n;i++)o+=s[Math.floor(Math.random()*s.length)];return o;}
-function setAddr(a){document.getElementById('addr').value=a;localStorage.setItem('kenmail_addr',a);document.getElementById('inbox').innerHTML='<div class="empty">📭 Đang chờ email…</div>';load();}
-function randomAddr(){setAddr(rnd(8)+"@"+DOMAIN);}
-function customAddr(){var n=prompt("Nhập tên (trước @"+DOMAIN+"):");if(n){n=n.toLowerCase().replace(/[^a-z0-9._-]/g,'');if(n)setAddr(n+"@"+DOMAIN);}}
-function copyAddr(){var i=document.getElementById('addr');navigator.clipboard&&navigator.clipboard.writeText(i.value);i.select();document.execCommand&&document.execCommand('copy');document.getElementById('status').innerText='Đã sao chép ✓';}
-function findCode(t){var m=(t||'').match(/\\b\\d{4,8}\\b/);return m?m[0]:null;}
-function esc(s){return (s||'').replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
-function load(){
-  var a=document.getElementById('addr').value;if(!a)return;
-  fetch('/tempmail/inbox?addr='+encodeURIComponent(a)).then(function(r){return r.json();}).then(function(d){
-    var box=document.getElementById('inbox');
-    if(!d.mails||d.mails.length===0){box.innerHTML='<div class="empty">📭 Đang chờ email…</div>';return;}
-    box.innerHTML=d.mails.map(function(m){
-      var code=findCode(m.subject)||findCode(m.body);
-      return '<div class="mail"><div class="f">Từ: '+esc(m.from_addr)+'</div>'+
-        '<div class="s">'+esc(m.subject||'(không tiêu đề)')+'</div>'+
-        (code?'<div class="code">Mã: '+code+'</div>':'')+
-        '<div class="b">'+esc(m.body||'')+'</div></div>';
-    }).join('');
-  }).catch(function(){});
-}
-(function(){var saved=localStorage.getItem('kenmail_addr');if(saved&&saved.indexOf('@')>0)setAddr(saved);else randomAddr();setInterval(load,5000);})();
-</script></body></html>"""
-
-
-@app.get("/", response_class=HTMLResponse)
-@app.get("/tempmail", response_class=HTMLResponse)
-def tempmail_page() -> Any:
-    return _TEMPMAIL_HTML.replace("__DOMAIN__", MAIL_DOMAIN)
 
 
 @app.get("/config")
@@ -3379,21 +3281,16 @@ def mail_send(b: MailSendIn, user=Depends(get_user)) -> dict[str, Any]:
 
 
 def _deliver_incoming(rcpt: str, sender: str, subject: str, body: str) -> None:
-    """Lưu thư đến: vào hộp thư nếu có, VÀ luôn lưu catch-all temp-mail (như cenios.net)."""
+    """Lưu thư đến vào hộp thư tương ứng (gọi từ bộ nhận SMTP)."""
     rcpt = (rcpt or "").strip().lower()
-    now = int(time.time())
     try:
         with db() as c:
-            # Catch-all: lưu MỌI thư gửi tới @MAIL_DOMAIN để xem trên web temp-mail
-            if rcpt.endswith("@" + MAIL_DOMAIN):
-                c.execute("INSERT INTO temp_mails(addr,from_addr,subject,body,created_at) "
-                          "VALUES(?,?,?,?,?)", (rcpt, sender, subject, body, now))
-            # Nếu có hộp thư đã tạo → lưu vào hộp đó nữa
             box = c.execute("SELECT id FROM mailboxes WHERE address=?", (rcpt,)).fetchone()
-            if box:
-                c.execute("INSERT INTO mails(mailbox_id,direction,from_addr,to_addr,subject,body,created_at,seen) "
-                          "VALUES(?,?,?,?,?,?,?,0)",
-                          (box["id"], "in", sender, rcpt, subject, body, now))
+            if not box:
+                return
+            c.execute("INSERT INTO mails(mailbox_id,direction,from_addr,to_addr,subject,body,created_at,seen) "
+                      "VALUES(?,?,?,?,?,?,?,0)",
+                      (box["id"], "in", sender, rcpt, subject, body, int(time.time())))
     except Exception as e:
         logging.warning("deliver_incoming lỗi: %s", e)
 
