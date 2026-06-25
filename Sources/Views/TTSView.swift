@@ -1207,8 +1207,7 @@ struct TTSView: View {
             content()
         }
         .padding(12)
-        .background(Color(.tertiarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .kCard(12)
     }
     private func textField(_ ph: String, _ text: Binding<String>) -> some View {
         TextField(ph, text: text)

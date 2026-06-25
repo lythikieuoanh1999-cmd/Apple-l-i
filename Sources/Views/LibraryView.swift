@@ -113,9 +113,16 @@ struct FilesPane: View {
                         Button {
                             Task { await previewFile(f) }
                         } label: {
-                            HStack {
-                                Image(systemName: categoryIcon(f.category)).foregroundStyle(Theme.accent)
-                                VStack(alignment: .leading) {
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(Theme.accent.opacity(0.18))
+                                        .frame(width: 40, height: 40)
+                                    Image(systemName: categoryIcon(f.category))
+                                        .font(.system(size: 18, weight: .semibold))
+                                        .foregroundStyle(Theme.accent)
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
                                     Text(f.name).lineLimit(1).foregroundStyle(.primary)
                                     Text(humanSize(f.size)).font(.caption).foregroundStyle(.secondary)
                                 }
