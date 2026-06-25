@@ -125,9 +125,9 @@ struct RegisterView: View {
                 TextField("Số điện thoại (tuỳ chọn)", text: $phone).keyboardType(.phonePad)
             }
 
-            // Xác nhận email bằng mã (OTP)
+            // Xác nhận email bằng mã (OTP) — KHÔNG bắt buộc, chỉ dùng nếu muốn
             if emailValid {
-                Section("Xác nhận email") {
+                Section("Xác nhận email (tuỳ chọn)") {
                     Button {
                         Task { await sendCode() }
                     } label: {
@@ -145,6 +145,8 @@ struct RegisterView: View {
                     if let otpInfo {
                         Text(otpInfo).font(.caption).foregroundStyle(.secondary)
                     }
+                    Text("Bạn có thể tạo tài khoản ngay mà không cần xác nhận mã.")
+                        .font(.caption2).foregroundStyle(.secondary)
                 }
             }
 
@@ -153,11 +155,7 @@ struct RegisterView: View {
                 Button { Task { await doRegister() } } label: {
                     HStack { if loading { ProgressView().padding(.trailing, 6) }; Text("Tạo tài khoản") }
                 }
-                .disabled(loading || (emailValid && (!codeSent || code.count < 4)))
-            }
-            if emailValid && !codeSent {
-                Text("Hãy bấm \"Gửi mã xác nhận\" và nhập mã trong hộp thư trước khi tạo tài khoản.")
-                    .font(.caption2).foregroundStyle(.secondary)
+                .disabled(loading)
             }
         }
         .navigationTitle("Đăng ký")
@@ -182,8 +180,10 @@ struct RegisterView: View {
     private func doRegister() async {
         loading = true; error = nil
         do {
+            // chỉ gửi mã nếu người dùng thực sự đã nhập (không bắt buộc)
+            let otp = (codeSent && code.count >= 4) ? code : nil
             let resp = try await store.api.register(username, password, email: email, phone: phone,
-                                                    code: emailValid ? code : nil)
+                                                    code: otp)
             store.setAuth(resp); await store.loadProviders(); dismiss()
         } catch { self.error = error.localizedDescription }
         loading = false

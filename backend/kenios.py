@@ -341,6 +341,12 @@ def init_db() -> None:
                 created_at INTEGER,
                 seen INTEGER DEFAULT 0
             );
+            CREATE TABLE IF NOT EXISTS mail_domains(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                domain TEXT UNIQUE NOT NULL,
+                user_id INTEGER,
+                created_at INTEGER
+            );
             CREATE TABLE IF NOT EXISTS otp_codes(
                 email TEXT PRIMARY KEY,
                 code TEXT NOT NULL,
@@ -738,6 +744,11 @@ async def post_with_retry(
             r = await client.post(url, **kwargs)
         except (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError) as e:
             if attempt >= max_retries:
+                if provider == "kenios":
+                    raise HTTPException(status_code=503,
+                        detail="KENIOS AI chưa chạy. Hãy cài model trên VPS: chạy "
+                               "`bash kenios-ai/install-ai.sh` (cài Ollama + tải model) rồi "
+                               "`systemctl restart kenios`. Hoặc tạm chọn AI khác (Gemini/Groq).")
                 raise HTTPException(status_code=502,
                     detail=f"{provider or 'AI'}: không kết nối được tới máy chủ ({e.__class__.__name__}).")
             await asyncio.sleep(delay)
@@ -1817,6 +1828,11 @@ async def chat_stream(b: ChatIn, user=Depends(get_user)):
                 yield "data: " + json.dumps({"delta": chunk}, ensure_ascii=False) + "\n\n"
         except HTTPException as e:
             yield "data: " + json.dumps({"error": str(e.detail)}, ensure_ascii=False) + "\n\n"
+        except (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError) as e:
+            msg = (str(e) if b.provider != "kenios"
+                   else "KENIOS AI chưa chạy. Cài Ollama trên VPS rồi thử lại "
+                        "(bash kenios-ai/install-ai.sh).")
+            yield "data: " + json.dumps({"error": msg}, ensure_ascii=False) + "\n\n"
         except Exception as e:
             yield "data: " + json.dumps({"error": str(e)}, ensure_ascii=False) + "\n\n"
         if full:
@@ -3051,6 +3067,7 @@ _LOCAL_RE = _re_mail.compile(r"^[a-z0-9._-]{2,40}$")
 class MailCreateIn(BaseModel):
     local: str            # phần trước @ (vd "cong" → cong@kenios.store)
     password: str
+    domain: Optional[str] = None
 
 
 class MailSendIn(BaseModel):
@@ -3063,6 +3080,11 @@ class MailSendIn(BaseModel):
 class MailBulkIn(BaseModel):
     count: int = 5
     prefix: str = ""
+    domain: Optional[str] = None
+
+
+class MailDomainIn(BaseModel):
+    domain: str
 
 
 def _mailbox_owned(mailbox_id: int, uid: int) -> sqlite3.Row:
@@ -3074,18 +3096,64 @@ def _mailbox_owned(mailbox_id: int, uid: int) -> sqlite3.Row:
     return row
 
 
+@app.get("/mail/domains")
+def mail_domains_list(user=Depends(get_user)) -> dict[str, Any]:
+    """Lấy danh sách các tên miền tùy chỉnh đã thêm."""
+    with db() as c:
+        rows = c.execute("SELECT id, domain, created_at FROM mail_domains WHERE user_id=? ORDER BY id DESC",
+                        (user["id"],)).fetchall()
+    return {"domains": [dict(r) for r in rows]}
+
+
+@app.post("/mail/domains")
+def mail_domains_add(b: MailDomainIn, user=Depends(get_user)) -> dict[str, Any]:
+    """Thêm một tên miền tùy chỉnh mới."""
+    dom = (b.domain or "").strip().lower()
+    if not dom or "." not in dom or len(dom) < 3:
+        raise HTTPException(status_code=400, detail="Tên miền không hợp lệ.")
+    with db() as c:
+        if c.execute("SELECT 1 FROM mail_domains WHERE domain=? AND user_id=?", (dom, user["id"])).fetchone():
+            raise HTTPException(status_code=409, detail="Tên miền này đã được thêm.")
+        cur = c.execute("INSERT INTO mail_domains(domain, user_id, created_at) VALUES(?,?,?)",
+                        (dom, user["id"], int(time.time())))
+        did = cur.lastrowid
+    return {"id": did, "domain": dom}
+
+
+@app.delete("/mail/domains/{domain_id}")
+def mail_domains_delete(domain_id: int, user=Depends(get_user)) -> dict[str, Any]:
+    """Xóa tên miền tùy chỉnh."""
+    with db() as c:
+        row = c.execute("SELECT 1 FROM mail_domains WHERE id=? AND user_id=?", (domain_id, user["id"])).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Không tìm thấy tên miền.")
+        c.execute("DELETE FROM mail_domains WHERE id=?", (domain_id,))
+    return {"ok": True}
+
+
 @app.post("/mail/bulk-create")
 def mail_bulk_create(b: MailBulkIn, user=Depends(get_user)) -> dict[str, Any]:
-    """Tạo nhiều hộp thư @MAIL_DOMAIN ngẫu nhiên cùng lúc (không cần SĐT/email khác)."""
+    """Tạo nhiều hộp thư ngẫu nhiên cùng lúc (không cần SĐT/email khác)."""
     n = max(1, min(b.count, 50))
     prefix = "".join(ch for ch in (b.prefix or "").strip().lower() if ch in "abcdefghijklmnopqrstuvwxyz0123456789._-")[:20]
+    
+    dom = (b.domain or "").strip().lower()
+    if dom:
+        if dom != MAIL_DOMAIN:
+            with db() as c:
+                row = c.execute("SELECT 1 FROM mail_domains WHERE domain=? AND user_id=?", (dom, user["id"])).fetchone()
+            if not row:
+                raise HTTPException(status_code=400, detail="Tên miền chưa được thêm cho tài khoản của bạn.")
+    else:
+        dom = MAIL_DOMAIN
+
     created: list[dict[str, str]] = []
     with db() as c:
         for _ in range(n):
             addr = ""
             for _try in range(12):
                 local = (prefix + secrets.token_hex(4))[:40]
-                cand = f"{local}@{MAIL_DOMAIN}"
+                cand = f"{local}@{dom}"
                 if not c.execute("SELECT 1 FROM mailboxes WHERE address=?", (cand,)).fetchone():
                     addr = cand
                     break
@@ -3106,7 +3174,18 @@ def mail_create(b: MailCreateIn, user=Depends(get_user)) -> dict[str, Any]:
             detail="Tên hộp thư 2–40 ký tự, chỉ gồm a-z 0-9 . _ -")
     if len(b.password) < 6:
         raise HTTPException(status_code=400, detail="Mật khẩu hộp thư ≥ 6 ký tự.")
-    address = f"{local}@{MAIL_DOMAIN}"
+    
+    dom = (b.domain or "").strip().lower()
+    if dom:
+        if dom != MAIL_DOMAIN:
+            with db() as c:
+                row = c.execute("SELECT 1 FROM mail_domains WHERE domain=? AND user_id=?", (dom, user["id"])).fetchone()
+            if not row:
+                raise HTTPException(status_code=400, detail="Tên miền chưa được thêm cho tài khoản của bạn.")
+    else:
+        dom = MAIL_DOMAIN
+
+    address = f"{local}@{dom}"
     with db() as c:
         if c.execute("SELECT 1 FROM mailboxes WHERE address=?", (address,)).fetchone():
             raise HTTPException(status_code=409, detail="Địa chỉ này đã tồn tại.")
@@ -3217,12 +3296,15 @@ def send_system_mail(to: str, subject: str, body: str) -> str:
     if "@" not in to:
         return "none"
     sender = f"no-reply@{MAIL_DOMAIN}"
-    # Nội bộ: nếu là hộp thư @MAIL_DOMAIN đã tồn tại → giao thẳng vào KenMail
-    if to.lower().endswith("@" + MAIL_DOMAIN):
+    # Nội bộ: nếu là hộp thư đã tồn tại trong hệ thống (kể cả tên miền custom) → giao thẳng vào KenMail
+    with db() as c:
+        ok = c.execute("SELECT 1 FROM mailboxes WHERE address=?", (to.lower(),)).fetchone()
+    if ok:
         _deliver_incoming(to, sender, subject, body)
-        with db() as c:
-            ok = c.execute("SELECT 1 FROM mailboxes WHERE address=?", (to.lower(),)).fetchone()
-        return "internal" if ok else "none"
+        return "internal"
+    # Nếu là tên miền mặc định @MAIL_DOMAIN nhưng chưa tạo hộp thư
+    if to.lower().endswith("@" + MAIL_DOMAIN):
+        return "none"
     # Bên ngoài: cần SMTP relay
     if SMTP_RELAY_HOST:
         try:

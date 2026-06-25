@@ -588,8 +588,8 @@ struct WebPreviewPane: View {
             }
         }
         .fileImporter(isPresented: $showImporter,
-                      allowedContentTypes: [.item], // ← THAY ĐỔI: chỉ .item để mọi file đều chọn được
-                      allowsMultipleSelection: false) { loadFile($0) }
+                      allowedContentTypes: [.item], // chỉ .item để mọi file đều chọn được
+                      allowsMultipleSelection: true) { loadFile($0) }
         .sheet(isPresented: $showFull) {
             NavigationStack {
                 WebPreview(html: preview, reloadToken: runToken, autoClick: autoClick,
@@ -654,12 +654,23 @@ struct WebPreviewPane: View {
     }
 
     private func loadFile(_ res: Result<[URL], Error>) {
-        guard case .success(let urls) = res, let url = urls.first else { return }
-        let access = url.startAccessingSecurityScopedResource()
-        defer { if access { url.stopAccessingSecurityScopedResource() } }
-        if let data = try? Data(contentsOf: url), let text = String(data: data, encoding: .utf8) {
-            html = text; preview = text
-        } else { error = "Không đọc được file." }
+        guard case .success(let urls) = res, !urls.isEmpty else { return }
+        var parts: [String] = []
+        var failed = 0
+        for url in urls {
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+            if let data = try? Data(contentsOf: url), let text = String(data: data, encoding: .utf8) {
+                parts.append(text)
+            } else { failed += 1 }
+        }
+        if !parts.isEmpty {
+            // Nhiều tệp → ghép lại (vd index.html + style.css + script.js)
+            html = parts.joined(separator: "\n")
+            preview = html
+            runToken &+= 1
+        }
+        error = failed > 0 ? "Bỏ qua \(failed) tệp không đọc được (nhị phân)." : nil
     }
 
     private func generate() async {

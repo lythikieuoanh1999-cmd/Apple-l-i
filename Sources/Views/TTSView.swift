@@ -3,7 +3,30 @@ import AVFoundation
 
 // ======================== Engine TTS (đọc văn bản, phát nền) ========================
 final class TTSEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
+    enum EngineType: String, CaseIterable, Identifiable {
+        case system = "system"
+        case google = "google"
+        case siri = "siri"
+        case adam = "adam"
+        
+        var id: String { self.rawValue }
+        var label: String {
+            switch self {
+            case .system: return "Mặc định (iOS)"
+            case .google: return "Chị Google (Online)"
+            case .siri: return "Giọng Siri (iOS)"
+            case .adam: return "Giọng Adam (iOS)"
+            }
+        }
+    }
+
     private let synth = AVSpeechSynthesizer()
+    private var silentPlayer: AVAudioPlayer?
+    
+    // Google TTS Queue
+    private var googleQueue: [String] = []
+    private var googlePlayer: AVPlayer?
+    private var isPlayingGoogle = false
 
     @Published var isSpeaking = false
     @Published var isPaused = false
@@ -12,6 +35,12 @@ final class TTSEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published var rate: Float = AVSpeechUtteranceDefaultSpeechRate   // ~0.5
     @Published var pitch: Float = 1.0             // 0.5 ... 2.0
     @Published var volume: Float = 1.0            // 0 ... 1
+    
+    @Published var engineType: EngineType = .system {
+        didSet {
+            UserDefaults.standard.set(engineType.rawValue, forKey: "tts_engine_type")
+        }
+    }
 
     override init() {
         super.init()
@@ -22,12 +51,17 @@ final class TTSEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         } else if let any = AVSpeechSynthesisVoice.speechVoices().first {
             voiceId = any.identifier
         }
+        
+        if let savedEngine = UserDefaults.standard.string(forKey: "tts_engine_type"),
+           let type = EngineType(rawValue: savedEngine) {
+            self.engineType = type
+        }
     }
 
     /// Bật phiên audio dạng playback để tiếp tục đọc khi khoá màn hình / chuyển app khác.
     private func activateSession() {
         let s = AVAudioSession.sharedInstance()
-        try? s.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+        try? s.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers, .mixWithOthers])
         try? s.setActive(true, options: [])
     }
 
@@ -35,21 +69,236 @@ final class TTSEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
         activateSession()
-        let u = AVSpeechUtterance(string: t)
+        // Tự bật chế độ nền (giữ audio sống khi chuyển app / khoá màn hình)
+        if silentPlayer == nil { startBackgroundMode() }
+
+        switch engineType {
+        case .google:
+            playGoogleTTS(t)
+        case .siri:
+            playSiriTTS(t)
+        case .adam:
+            playAdamTTS(t)
+        case .system:
+            playSystemTTS(t)
+        }
+    }
+    
+    private func playSystemTTS(_ text: String) {
+        let u = AVSpeechUtterance(string: text)
         if let v = AVSpeechSynthesisVoice(identifier: voiceId) { u.voice = v }
         u.rate = rate
         u.pitchMultiplier = pitch
         u.volume = volume
         synth.speak(u)          // tự xếp hàng nếu đang đọc cái khác
     }
+    
+    private func playSiriTTS(_ text: String) {
+        let u = AVSpeechUtterance(string: text)
+        let voices = AVSpeechSynthesisVoice.speechVoices()
+        let siriVoice = voices.first { v in
+            v.language.hasPrefix("vi") && v.identifier.lowercased().contains("siri")
+        } ?? voices.first { v in
+            v.language.hasPrefix("vi")
+        } ?? voices.first { v in
+            v.identifier.lowercased().contains("siri")
+        }
+        
+        if let v = siriVoice {
+            u.voice = v
+        }
+        u.rate = rate
+        u.pitchMultiplier = pitch
+        u.volume = volume
+        synth.speak(u)
+    }
+    
+    private func playAdamTTS(_ text: String) {
+        // "Adam" = giọng nam trầm. Ưu tiên giọng TIẾNG VIỆT để đọc đúng tiếng Việt,
+        // hạ cao độ cho chất nam trầm (Adam). Nếu không có giọng Việt mới dùng giọng khác.
+        let u = AVSpeechUtterance(string: text)
+        let voices = AVSpeechSynthesisVoice.speechVoices()
+        let viVoices = voices.filter { $0.language.hasPrefix("vi") }
+        let adamVoice = viVoices.first { $0.name.lowercased().contains("nam") }   // giọng nam VN nếu có
+            ?? viVoices.first { $0.quality == .enhanced || $0.quality == .premium }
+            ?? viVoices.first
+            ?? voices.first { $0.identifier.lowercased().contains("adam") }
+            ?? voices.first { $0.language.hasPrefix("en") }
+        if let v = adamVoice { u.voice = v }
+        u.rate = rate
+        u.pitchMultiplier = min(pitch, 0.85)   // trầm hơn cho chất Adam nam
+        u.volume = volume
+        synth.speak(u)
+    }
+    
+    private func playGoogleTTS(_ text: String) {
+        // Google TTS giới hạn ~200 ký tự/yêu cầu → chia 180 và đọc lần lượt TOÀN BỘ.
+        let chunks = splitTextIntoChunks(text, maxLen: 180)
+        for chunk in chunks {
+            googleQueue.append(chunk)
+        }
+        if !isPlayingGoogle {
+            playNextGoogleItem()
+        }
+    }
+    
+    private func splitTextIntoChunks(_ text: String, maxLen: Int) -> [String] {
+        var chunks: [String] = []
+        let sentences = text.components(separatedBy: CharacterSet(charactersIn: ".?!,;:\n"))
+        
+        for sentence in sentences {
+            let trimmed = sentence.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            
+            if trimmed.count <= maxLen {
+                chunks.append(trimmed)
+            } else {
+                let words = trimmed.components(separatedBy: .whitespacesAndNewlines)
+                var currentChunk = ""
+                
+                for word in words {
+                    let candidate = currentChunk.isEmpty ? word : "\(currentChunk) \(word)"
+                    if candidate.count <= maxLen {
+                        currentChunk = candidate
+                    } else {
+                        if !currentChunk.isEmpty {
+                            chunks.append(currentChunk)
+                        }
+                        currentChunk = word
+                    }
+                }
+                if !currentChunk.isEmpty {
+                    chunks.append(currentChunk)
+                }
+            }
+        }
+        return chunks
+    }
+    
+    private func playNextGoogleItem() {
+        guard !googleQueue.isEmpty else {
+            isPlayingGoogle = false
+            isSpeaking = false
+            return
+        }
+        
+        isPlayingGoogle = true
+        isSpeaking = true
+        let text = googleQueue.removeFirst()
+        
+        guard let encodedText = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            playNextGoogleItem()
+            return
+        }
+        
+        let urlString = "https://translate.google.com/translate_tts?ie=UTF-8&tl=vi&client=tw-ob&q=\(encodedText)"
+        guard let url = URL(string: urlString) else {
+            playNextGoogleItem()
+            return
+        }
+        
+        let playerItem = AVPlayerItem(url: url)
+        
+        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(googleItemDidPlayToEndTime), name: .AVPlayerItemDidPlayToEndTime, object: playerItem)
+        
+        if googlePlayer == nil {
+            googlePlayer = AVPlayer(playerItem: playerItem)
+        } else {
+            googlePlayer?.replaceCurrentItem(with: playerItem)
+        }
+        
+        googlePlayer?.volume = volume
+        googlePlayer?.play()
+    }
+    
+    @objc private func googleItemDidPlayToEndTime(notification: Notification) {
+        DispatchQueue.main.async { [weak self] in
+            self?.playNextGoogleItem()
+        }
+    }
 
     func stop() {
         synth.stopSpeaking(at: .immediate)
+        googleQueue.removeAll()
+        googlePlayer?.pause()
+        googlePlayer = nil
+        isPlayingGoogle = false
+        isSpeaking = false
         isPaused = false
+        stopBackgroundMode()
     }
+    
     func pauseOrContinue() {
-        if synth.isPaused { synth.continueSpeaking(); isPaused = false }
-        else if synth.isSpeaking { synth.pauseSpeaking(at: .word); isPaused = true }
+        if engineType == .google {
+            if isPaused {
+                googlePlayer?.play()
+                isPaused = false
+            } else if isSpeaking {
+                googlePlayer?.pause()
+                isPaused = true
+            }
+        } else {
+            if synth.isPaused { synth.continueSpeaking(); isPaused = false }
+            else if synth.isSpeaking { synth.pauseSpeaking(at: .word); isPaused = true }
+        }
+    }
+
+    func startBackgroundMode() {
+        activateSession()
+        guard let silentData = createSilentWAV() else { return }
+        do {
+            let player = try AVAudioPlayer(data: silentData)
+            player.numberOfLoops = -1
+            player.volume = 0.01
+            player.prepareToPlay()
+            player.play()
+            self.silentPlayer = player
+        } catch {
+            print("Lỗi khởi tạo silent player: \(error)")
+        }
+    }
+    
+    func stopBackgroundMode() {
+        silentPlayer?.stop()
+        silentPlayer = nil
+    }
+    
+    private func createSilentWAV() -> Data? {
+        let sampleRate: Int32 = 8000
+        let channels: Int16 = 1
+        let bps: Int16 = 16
+        let seconds = 2
+        let byteRate = sampleRate * Int32(channels) * Int32(bps / 8)
+        let blockAlign = channels * (bps / 8)
+        let dataSize = byteRate * Int32(seconds)
+        
+        var header = Data()
+        header.append(contentsOf: "RIFF".utf8)
+        var totalSizeLE = (dataSize + 36).littleEndian
+        header.append(Data(bytes: &totalSizeLE, count: 4))
+        header.append(contentsOf: "WAVEfmt ".utf8)
+        var fmtSizeLE: Int32 = 16
+        header.append(Data(bytes: &fmtSizeLE, count: 4))
+        var formatLE: Int16 = 1 // PCM
+        header.append(Data(bytes: &formatLE, count: 2))
+        var channelsLE = channels.littleEndian
+        header.append(Data(bytes: &channelsLE, count: 2))
+        var sampleRateLE = sampleRate.littleEndian
+        header.append(Data(bytes: &sampleRateLE, count: 4))
+        var byteRateLE = byteRate.littleEndian
+        header.append(Data(bytes: &byteRateLE, count: 4))
+        var blockAlignLE = blockAlign.littleEndian
+        header.append(Data(bytes: &blockAlignLE, count: 2))
+        var bpsLE = bps.littleEndian
+        header.append(Data(bytes: &bpsLE, count: 2))
+        header.append(contentsOf: "data".utf8)
+        var dataSizeLE = dataSize.littleEndian
+        header.append(Data(bytes: &dataSizeLE, count: 4))
+        
+        let silence = Data(repeating: 0, count: Int(dataSize))
+        header.append(silence)
+        return header
     }
 
     // delegate
@@ -85,7 +334,6 @@ struct VoiceStyle: Identifiable, Hashable {
     let rate: Float
 }
 
-// rate chuẩn ~0.5 (AVSpeechUtteranceDefaultSpeechRate). Anime = cao độ cao + nhanh hơn chút.
 let kVoiceStyles: [VoiceStyle] = [
     .init(id: "normal",   label: "Thường",    icon: "person.wave.2",        pitch: 1.0,  rate: 0.50),
     .init(id: "anime_f",  label: "Anime nữ",  icon: "sparkles",             pitch: 1.7,  rate: 0.54),
@@ -121,6 +369,13 @@ struct TTSView: View {
     @State private var pollTask: Task<Void, Never>?
     @State private var readTypes: Set<String> = ["comment", "gift", "follow", "share", "join"]
     @State private var liveFeed: [TikTokLiveEvent] = []
+
+    // ----- Cấu hình câu phát (greetings) -----
+    @State private var templateJoin = UserDefaults.standard.string(forKey: "tts_event_template_join") ?? "Chào mừng {name} đã vào phòng"
+    @State private var templateGift = UserDefaults.standard.string(forKey: "tts_event_template_gift") ?? "Cảm ơn {name} đã tặng {content}"
+    @State private var templateComment = UserDefaults.standard.string(forKey: "tts_event_template_comment") ?? "{name} bình luận: {content}"
+    @State private var templateFollow = UserDefaults.standard.string(forKey: "tts_event_template_follow") ?? "Cảm ơn {name} đã theo dõi"
+    @State private var templateShare = UserDefaults.standard.string(forKey: "tts_event_template_share") ?? "Cảm ơn {name} đã chia sẻ live"
 
     private var voices: [AVSpeechSynthesisVoice] {
         var all = AVSpeechSynthesisVoice.speechVoices()
@@ -214,6 +469,54 @@ struct TTSView: View {
                             .font(.caption2).foregroundStyle(.secondary)
                     }
 
+                    // ----- Cấu hình câu phát (greetings) -----
+                    section("Cấu hình câu phát (Greetings & Alerts)") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Hỗ trợ {name} để chèn tên người và {content} để chèn tên quà/bình luận.")
+                                .font(.caption2).foregroundStyle(.secondary)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Lời chào người vào phòng (Welcome):").font(.caption).bold()
+                                textField("Chào mừng {name} đã vào phòng", $templateJoin)
+                                    .onChange(of: templateJoin) { newValue in
+                                        UserDefaults.standard.set(newValue, forKey: "tts_event_template_join")
+                                    }
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Cảm ơn tặng quà (Gift):").font(.caption).bold()
+                                textField("Cảm ơn {name} đã tặng {content}", $templateGift)
+                                    .onChange(of: templateGift) { newValue in
+                                        UserDefaults.standard.set(newValue, forKey: "tts_event_template_gift")
+                                    }
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Đọc bình luận (Comment):").font(.caption).bold()
+                                textField("{name} bình luận: {content}", $templateComment)
+                                    .onChange(of: templateComment) { newValue in
+                                        UserDefaults.standard.set(newValue, forKey: "tts_event_template_comment")
+                                    }
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Cảm ơn theo dõi (Follow):").font(.caption).bold()
+                                textField("Cảm ơn {name} đã theo dõi", $templateFollow)
+                                    .onChange(of: templateFollow) { newValue in
+                                        UserDefaults.standard.set(newValue, forKey: "tts_event_template_follow")
+                                    }
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Cảm ơn chia sẻ (Share):").font(.caption).bold()
+                                textField("Cảm ơn {name} đã chia sẻ live", $templateShare)
+                                    .onChange(of: templateShare) { newValue in
+                                        UserDefaults.standard.set(newValue, forKey: "tts_event_template_share")
+                                    }
+                            }
+                        }
+                    }
+
                     // ----- Thông báo livestream -----
                     section("Thông báo livestream") {
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -267,14 +570,23 @@ struct TTSView: View {
                         }.buttonStyle(.bordered).disabled(!tts.isSpeaking && !tts.isPaused)
                     }
 
-                    // ----- Tinh chỉnh giọng -----
-                    section("Tuỳ chỉnh giọng") {
+                    // ----- Động cơ & Tinh chỉnh giọng -----
+                    section("Thiết lập Động cơ giọng nói") {
+                        Text("Động cơ").font(.caption).foregroundStyle(.secondary)
+                        Picker("Động cơ", selection: $tts.engineType) {
+                            ForEach(TTSEngine.EngineType.allCases) { type in
+                                Text(type.label).tag(type)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.bottom, 8)
+                        
                         Toggle(isOn: $translateToVi) {
                             Label("Tự dịch sang tiếng Việt khi đọc", systemImage: "character.bubble")
                                 .font(.subheadline)
                         }.tint(Theme.accent)
 
-                        Text("Kiểu giọng").font(.caption).foregroundStyle(.secondary)
+                        Text("Kiểu giọng (Chỉ dành cho iOS)").font(.caption).foregroundStyle(.secondary)
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack {
                                 ForEach(kVoiceStyles) { s in
@@ -296,30 +608,32 @@ struct TTSView: View {
                     }
 
                     // ----- Chọn giọng -----
-                    section("Giọng đọc (\(AVSpeechSynthesisVoice.speechVoices().count) giọng · \(vietnameseVoiceCount) tiếng Việt)") {
-                        Toggle(isOn: $onlyVietnameseVoices) {
-                            Label("Chỉ hiện giọng tiếng Việt", systemImage: "flag.fill").font(.subheadline)
-                        }.tint(Theme.accent)
-                        textField("Tìm theo tên / ngôn ngữ (vd: vi, English)", $search)
-                        VStack(spacing: 0) {
-                            ForEach(voices, id: \.identifier) { v in
-                                Button { tts.voiceId = v.identifier } label: {
-                                    HStack {
-                                        Image(systemName: tts.voiceId == v.identifier ? "largecircle.fill.circle" : "circle")
-                                            .foregroundStyle(Theme.accent)
-                                        VStack(alignment: .leading) {
-                                            Text(v.name).font(.subheadline)
-                                            Text("\(v.language) · \(qualityText(v.quality))")
-                                                .font(.caption2).foregroundStyle(.secondary)
-                                        }
-                                        Spacer()
-                                    }.padding(.vertical, 6)
-                                }.buttonStyle(.plain)
-                                Divider()
+                    if tts.engineType == .system {
+                        section("Giọng đọc hệ thống (\(AVSpeechSynthesisVoice.speechVoices().count) giọng · \(vietnameseVoiceCount) tiếng Việt)") {
+                            Toggle(isOn: $onlyVietnameseVoices) {
+                                Label("Chỉ hiện giọng tiếng Việt", systemImage: "flag.fill").font(.subheadline)
+                            }.tint(Theme.accent)
+                            textField("Tìm theo tên / ngôn ngữ (vd: vi, English)", $search)
+                            VStack(spacing: 0) {
+                                ForEach(voices, id: \.identifier) { v in
+                                    Button { tts.voiceId = v.identifier } label: {
+                                        HStack {
+                                            Image(systemName: tts.voiceId == v.identifier ? "largecircle.fill.circle" : "circle")
+                                                .foregroundStyle(Theme.accent)
+                                            VStack(alignment: .leading) {
+                                                Text(v.name).font(.subheadline)
+                                                Text("\(v.language) · \(qualityText(v.quality))")
+                                                    .font(.caption2).foregroundStyle(.secondary)
+                                            }
+                                            Spacer()
+                                        }.padding(.vertical, 6)
+                                    }.buttonStyle(.plain)
+                                    Divider()
+                                }
                             }
+                            Text("Muốn thêm giọng tự nhiên hơn: iOS → Cài đặt → Trợ năng → Nội dung nói → Giọng nói → tải thêm.")
+                                .font(.caption2).foregroundStyle(.secondary)
                         }
-                        Text("Muốn thêm giọng tự nhiên hơn: iOS → Cài đặt → Trợ năng → Nội dung nói → Giọng nói → tải thêm.")
-                            .font(.caption2).foregroundStyle(.secondary)
                     }
                 }
                 .padding()
@@ -349,9 +663,17 @@ struct TTSView: View {
     }
 
     private func renderLive(_ ev: TikTokLiveEvent) -> String {
-        let e = kLiveEvents.first { $0.id == ev.type } ?? kLiveEvents[2]
+        let template: String
+        switch ev.type {
+        case "join": template = templateJoin
+        case "gift": template = templateGift
+        case "comment": template = templateComment
+        case "follow": template = templateFollow
+        case "share": template = templateShare
+        default: template = "{name} bình luận: {content}"
+        }
         let name = ev.name.isEmpty ? "bạn" : ev.name
-        return e.template
+        return template
             .replacingOccurrences(of: "{name}", with: name)
             .replacingOccurrences(of: "{content}", with: ev.content)
             .trimmingCharacters(in: .whitespaces)
@@ -362,6 +684,9 @@ struct TTSView: View {
         guard !id.isEmpty else { return }
         liveError = nil; liveFeed = []; lastEventId = 0
         liveStatus = "connecting"; liveConnected = true
+        
+        tts.startBackgroundMode() // Giữ app chạy ngầm bằng silent audio loop
+        
         Task {
             do {
                 let s = try await store.api.tiktokLiveConnect(username: id)
@@ -370,6 +695,7 @@ struct TTSView: View {
             } catch {
                 liveError = error.localizedDescription
                 liveStatus = "error"; liveConnected = false
+                tts.stopBackgroundMode()
             }
         }
     }
@@ -404,6 +730,7 @@ struct TTSView: View {
         pollTask?.cancel(); pollTask = nil
         liveConnected = false
         liveStatus = ""
+        tts.stopBackgroundMode() // Tắt chạy ngầm
         let id = tiktokId.trimmingCharacters(in: .whitespacesAndNewlines)
         Task { try? await store.api.tiktokLiveDisconnect(username: id) }
     }
@@ -416,9 +743,17 @@ struct TTSView: View {
                 content = tr.text
             }
         }
-        let e = kLiveEvents.first { $0.id == ev.type } ?? kLiveEvents[2]
+        let template: String
+        switch ev.type {
+        case "join": template = templateJoin
+        case "gift": template = templateGift
+        case "comment": template = templateComment
+        case "follow": template = templateFollow
+        case "share": template = templateShare
+        default: template = "{name} bình luận: {content}"
+        }
         let name = ev.name.isEmpty ? "bạn" : ev.name
-        return e.template
+        return template
             .replacingOccurrences(of: "{name}", with: name)
             .replacingOccurrences(of: "{content}", with: content)
             .trimmingCharacters(in: .whitespaces)
@@ -443,9 +778,17 @@ struct TTSView: View {
 
     // ----- helpers -----
     private func renderEvent() -> String {
-        let e = kLiveEvents.first { $0.id == selectedEvent } ?? kLiveEvents[0]
+        let template: String
+        switch selectedEvent {
+        case "join": template = templateJoin
+        case "gift": template = templateGift
+        case "comment": template = templateComment
+        case "follow": template = templateFollow
+        case "share": template = templateShare
+        default: template = "{name} bình luận: {content}"
+        }
         let name = personName.isEmpty ? "bạn" : personName
-        return e.template
+        return template
             .replacingOccurrences(of: "{name}", with: name)
             .replacingOccurrences(of: "{content}", with: content.isEmpty ? "" : content)
             .trimmingCharacters(in: .whitespaces)
@@ -483,3 +826,4 @@ struct TTSView: View {
         }
     }
 }
+
