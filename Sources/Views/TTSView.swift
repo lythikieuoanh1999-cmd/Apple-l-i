@@ -1,8 +1,9 @@
 import SwiftUI
 import AVFoundation
+import MediaPlayer
 
 // ======================== Engine TTS (đọc văn bản, phát nền) ========================
-final class TTSEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
+final class TTSEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVAudioPlayerDelegate {
     enum EngineType: String, CaseIterable, Identifiable {
         case system = "system"
         case google = "google"
@@ -27,6 +28,16 @@ final class TTSEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     private var googleQueue: [String] = []
     private var googlePlayer: AVPlayer?
     private var isPlayingGoogle = false
+
+    // ElevenLabs (giọng Adam thật, đa ngôn ngữ — đọc tiếng Việt)
+    @Published var elevenKey: String = UserDefaults.standard.string(forKey: "tts_eleven_key") ?? "" {
+        didSet { UserDefaults.standard.set(elevenKey, forKey: "tts_eleven_key") }
+    }
+    // Adam voice id công khai của ElevenLabs
+    var adamVoiceId: String = "pNInz6obpgDQGcFmaJgB"
+    private var elevenPlayer: AVAudioPlayer?
+    private var elevenQueue: [String] = []
+    private var isPlayingEleven = false
 
     @Published var isSpeaking = false
     @Published var isPaused = false
@@ -56,6 +67,7 @@ final class TTSEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
            let type = EngineType(rawValue: savedEngine) {
             self.engineType = type
         }
+        setupRemoteCommands()   // điều khiển từ Control Center / màn khoá
     }
 
     /// Bật phiên audio dạng playback để tiếp tục đọc khi khoá màn hình / chuyển app khác.
@@ -71,6 +83,7 @@ final class TTSEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         activateSession()
         // Tự bật chế độ nền (giữ audio sống khi chuyển app / khoá màn hình)
         if silentPlayer == nil { startBackgroundMode() }
+        updateNowPlaying(playing: true)   // hiện ở Control Center / màn khoá
 
         switch engineType {
         case .google:
@@ -114,6 +127,11 @@ final class TTSEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     }
     
     private func playAdamTTS(_ text: String) {
+        // Ưu tiên ElevenLabs nếu có API key → GIỌNG ADAM THẬT, đọc tiếng Việt (đa ngôn ngữ).
+        if !elevenKey.trimmingCharacters(in: .whitespaces).isEmpty {
+            playElevenLabs(text)
+            return
+        }
         // "Adam" = giọng nam trầm, BẮT BUỘC đọc tiếng Việt (không bao giờ đọc tiếng Anh).
         // 1) Nếu máy có giọng tiếng Việt → dùng giọng đó (hạ tông cho chất nam trầm).
         // 2) Nếu máy KHÔNG có giọng Việt → tự chuyển sang Google TTS tiếng Việt (online),
@@ -224,19 +242,107 @@ final class TTSEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         }
     }
 
+    // ===== ElevenLabs (giọng Adam thật · đa ngôn ngữ · đọc tiếng Việt) =====
+    private func playElevenLabs(_ text: String) {
+        elevenQueue.append(text)
+        if !isPlayingEleven { playNextEleven() }
+    }
+
+    private func playNextEleven() {
+        guard !elevenQueue.isEmpty else {
+            isPlayingEleven = false
+            isSpeaking = false
+            updateNowPlaying(playing: false)
+            return
+        }
+        isPlayingEleven = true
+        isSpeaking = true
+        updateNowPlaying(playing: true)
+        let text = elevenQueue.removeFirst()
+        let key = elevenKey.trimmingCharacters(in: .whitespaces)
+        guard let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(adamVoiceId)") else {
+            playNextEleven(); return
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 60
+        req.setValue(key, forHTTPHeaderField: "xi-api-key")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("audio/mpeg", forHTTPHeaderField: "Accept")
+        let body: [String: Any] = [
+            "text": text,
+            "model_id": "eleven_multilingual_v2",
+            "voice_settings": ["stability": 0.5, "similarity_boost": 0.75]
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        URLSession.shared.dataTask(with: req) { [weak self] data, resp, _ in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                if let data, code == 200, !data.isEmpty {
+                    do {
+                        self.activateSession()
+                        let player = try AVAudioPlayer(data: data)
+                        player.delegate = self
+                        player.volume = self.volume
+                        player.prepareToPlay()
+                        player.play()
+                        self.elevenPlayer = player
+                    } catch {
+                        self.playNextEleven()
+                    }
+                } else {
+                    // Lỗi key/mạng → bỏ đoạn này, đọc tiếp phần còn lại
+                    self.playNextEleven()
+                }
+            }
+        }.resume()
+    }
+
+    // ===== Now Playing (hiện ở Control Center / màn khoá) =====
+    func setupRemoteCommands() {
+        let c = MPRemoteCommandCenter.shared()
+        c.playCommand.removeTarget(nil); c.pauseCommand.removeTarget(nil); c.stopCommand.removeTarget(nil)
+        c.playCommand.isEnabled = true; c.pauseCommand.isEnabled = true; c.stopCommand.isEnabled = true
+        c.playCommand.addTarget { [weak self] _ in self?.pauseOrContinue(); return .success }
+        c.pauseCommand.addTarget { [weak self] _ in self?.pauseOrContinue(); return .success }
+        c.stopCommand.addTarget { [weak self] _ in self?.stop(); return .success }
+    }
+
+    private func updateNowPlaying(playing: Bool) {
+        var info: [String: Any] = [:]
+        info[MPMediaItemPropertyTitle] = "KENIOS đang đọc"
+        info[MPMediaItemPropertyArtist] = "KENIOS AI"
+        info[MPNowPlayingInfoPropertyPlaybackRate] = playing ? 1.0 : 0.0
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
     func stop() {
         synth.stopSpeaking(at: .immediate)
         googleQueue.removeAll()
         googlePlayer?.pause()
         googlePlayer = nil
         isPlayingGoogle = false
+        elevenQueue.removeAll()
+        elevenPlayer?.stop()
+        elevenPlayer = nil
+        isPlayingEleven = false
         isSpeaking = false
         isPaused = false
+        updateNowPlaying(playing: false)
         stopBackgroundMode()
     }
-    
+
+    // ElevenLabs phát xong 1 đoạn → đọc đoạn tiếp theo
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        if player === elevenPlayer { playNextEleven() }
+    }
+
     func pauseOrContinue() {
-        if engineType == .google {
+        if isPlayingEleven {
+            if isPaused { elevenPlayer?.play(); isPaused = false }
+            else if isSpeaking { elevenPlayer?.pause(); isPaused = true }
+        } else if engineType == .google {
             if isPaused {
                 googlePlayer?.play()
                 isPaused = false
@@ -310,7 +416,7 @@ final class TTSEngine: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     // delegate
     func speechSynthesizer(_ s: AVSpeechSynthesizer, didStart u: AVSpeechUtterance) { isSpeaking = true }
     func speechSynthesizer(_ s: AVSpeechSynthesizer, didFinish u: AVSpeechUtterance) {
-        if !s.isSpeaking { isSpeaking = false; isPaused = false }
+        if !s.isSpeaking { isSpeaking = false; isPaused = false; updateNowPlaying(playing: false) }
     }
     func speechSynthesizer(_ s: AVSpeechSynthesizer, didCancel u: AVSpeechUtterance) { isSpeaking = false }
 }
@@ -611,6 +717,22 @@ struct TTSView: View {
                                range: AVSpeechUtteranceMinimumSpeechRate...AVSpeechUtteranceMaximumSpeechRate)
                         slider("Cao độ", value: $tts.pitch, range: 0.5...2.0)
                         slider("Âm lượng", value: $tts.volume, range: 0...1)
+
+                        // Giọng Adam thật (ElevenLabs) — đọc tiếng Việt
+                        if tts.engineType == .adam {
+                            Divider().padding(.vertical, 4)
+                            Text("Giọng Adam (ElevenLabs) — nói tiếng Việt").font(.caption.bold())
+                            SecureField("Dán ElevenLabs API key (xi-...)", text: $tts.elevenKey)
+                                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                                .padding(8).background(Color(.secondarySystemBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            Text(tts.elevenKey.isEmpty
+                                 ? "Chưa có key → tạm dùng giọng Việt trên máy. Dán API key để dùng GIỌNG ADAM THẬT đọc tiếng Việt."
+                                 : "✓ Đang dùng giọng Adam thật (ElevenLabs, đa ngôn ngữ).")
+                                .font(.caption2).foregroundStyle(tts.elevenKey.isEmpty ? .orange : .green)
+                            Link("Lấy API key tại elevenlabs.io", destination: URL(string: "https://elevenlabs.io")!)
+                                .font(.caption2)
+                        }
                     }
 
                     // ----- Chọn giọng -----
