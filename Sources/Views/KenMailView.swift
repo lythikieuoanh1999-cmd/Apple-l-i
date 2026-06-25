@@ -65,6 +65,13 @@ struct KenMailView: View {
                         Button { selectedDomain = ""; showCreate = true } label: { Label("Tạo 1 hộp thư", systemImage: "plus") }
                         Button { selectedDomain = ""; showBulk = true } label: { Label("Tạo nhiều ngẫu nhiên", systemImage: "rectangle.stack.badge.plus") }
                         Button { showManageDomains = true } label: { Label("Quản lý tên miền", systemImage: "globe") }
+                        Divider()
+                        Link(destination: URL(string: "https://portal.inet.vn")!) {
+                            Label("Tạo email trên iNET", systemImage: "link")
+                        }
+                        Link(destination: URL(string: "https://mail.kenios.store")!) {
+                            Label("Webmail kenios.store", systemImage: "envelope.circle")
+                        }
                         if !mailboxes.isEmpty {
                             let listText = mailboxes.map { $0.address }.joined(separator: "\n")
                             ShareLink(item: listText, preview: SharePreview("danh_sach_mailbox.txt", image: Image(systemName: "envelope"))) {
