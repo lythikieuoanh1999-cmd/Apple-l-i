@@ -34,6 +34,7 @@ sudo apt update -y
 sudo apt install -y python3 python3-venv python3-dev python3-pip \
     nginx certbot python3-certbot-nginx \
     nodejs npm gcc g++ golang-go default-jdk \
+    ffmpeg \
     zip unzip curl wget git
 
 # 2. Tạo thư mục làm việc
@@ -68,7 +69,8 @@ pip install \
     "python-docx" \
     "openpyxl" \
     "TikTokLive>=6.0" \
-    "aiosmtpd>=1.4"
+    "aiosmtpd>=1.4" \
+    "yt-dlp"
 
 # 5. Tạo file .env
 echo "▸ [5/7] Tạo file cấu hình..."
@@ -132,8 +134,9 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 180s;
-        proxy_connect_timeout 30s;
+        proxy_read_timeout 1800s;
+        proxy_send_timeout 1800s;
+        proxy_connect_timeout 60s;
     }
 }
 EOF
