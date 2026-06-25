@@ -35,6 +35,7 @@ struct SocialMediaToolsView: View {
     
     // Downloader States
     @State private var videoURL = ""
+    @State private var videoQuality = "1080"
     @State private var downloading = false
     @State private var downloadedFileId: Int?
     @State private var downloadedFileName: String?
@@ -225,14 +226,27 @@ struct SocialMediaToolsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Liên kết video TikTok hoặc Facebook").font(.subheadline).bold()
+                    Text("Link TikTok · Facebook · Pinterest · YouTube").font(.subheadline).bold()
                     TextField("Dán link video ở đây...", text: $videoURL)
                         .padding(12)
                         .kGlass(RoundedRectangle(cornerRadius: 12))
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                 }
-                
+
+                // Chọn độ phân giải
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Độ phân giải").font(.caption).foregroundStyle(.secondary)
+                    Picker("Độ phân giải", selection: $videoQuality) {
+                        Text("720p").tag("720")
+                        Text("1080p").tag("1080")
+                        Text("2K").tag("2k")
+                        Text("4K").tag("4k")
+                        Text("Cao nhất").tag("best")
+                    }
+                    .pickerStyle(.segmented)
+                }
+
                 // Submit button
                 Button {
                     Task { await runDownload() }
@@ -613,7 +627,7 @@ struct SocialMediaToolsView: View {
         downloadedFileName = nil
         downloaderError = nil
         do {
-            let res = try await store.api.socialDownload(url: videoURL)
+            let res = try await store.api.socialDownload(url: videoURL, quality: videoQuality)
             downloadedFileId = res.fileId
             downloadedFileName = res.filename
             downloadedFileSize = res.size

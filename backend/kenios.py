@@ -2680,106 +2680,70 @@ async def social_generator(b: SocialGenIn, user=Depends(get_user)) -> dict[str, 
 
 class SocialDownloadIn(BaseModel):
     url: str
+    quality: str = "1080"   # 720 | 1080 | 2k | 4k | best
 
 
 @app.post("/social/download")
 async def social_download(b: SocialDownloadIn, user=Depends(get_user)) -> dict[str, Any]:
-    """Tải video TikTok / Facebook không logo về thư viện của hệ thống."""
-    import re
-    import time
-    import html as html_lib
-    import httpx
-    
+    """Tải video TikTok/Facebook/Pinterest/YouTube về thư viện (chọn độ phân giải) bằng yt-dlp."""
+    import time, tempfile, glob, shutil
     url = b.url.strip()
     if not url:
         raise HTTPException(status_code=400, detail="Thiếu link video.")
-    
-    is_tiktok = "tiktok.com" in url or "douyin.com" in url
-    is_facebook = "facebook.com" in url or "fb.watch" in url or "fb.com" in url
-    
-    if not (is_tiktok or is_facebook):
-        raise HTTPException(status_code=400, detail="Chỉ hỗ trợ link TikTok hoặc Facebook.")
-    
-    direct_url = None
-    title = f"video_{int(time.time())}"
-    
-    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-        if is_tiktok:
-            try:
-                r = await client.post("https://www.tikwm.com/api/", data={"url": url})
-                if r.status_code == 200:
-                    res_json = r.json()
-                    if res_json.get("code") == 0 and "data" in res_json:
-                        direct_url = res_json["data"].get("play")
-                        title = res_json["data"].get("title", f"tiktok_{int(time.time())}")
-                        title = "".join(c for c in title if c.isalnum() or c in " _-")[:50]
-                        if not title:
-                            title = f"tiktok_{int(time.time())}"
-            except Exception as e:
-                print(f"TikWM Error: {e}")
-        elif is_facebook:
-            try:
-                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
-                r = await client.get(url, headers=headers)
-                if r.status_code == 200:
-                    html_content = r.text
-                    matches = re.findall(r'"hd_src_no_ratelimit":"([^"]+)"', html_content)
-                    if not matches:
-                        matches = re.findall(r'"hd_src":"([^"]+)"', html_content)
-                    if not matches:
-                        matches = re.findall(r'"sd_src_no_ratelimit":"([^"]+)"', html_content)
-                    if not matches:
-                        matches = re.findall(r'"sd_src":"([^"]+)"', html_content)
-                    if not matches:
-                        matches = re.findall(r'<meta property="og:video" content="([^"]+)"', html_content)
-                        
-                    if matches:
-                        raw_url = matches[0]
-                        try:
-                            clean_url = raw_url.encode('utf-8').decode('unicode-escape')
-                        except Exception:
-                            clean_url = raw_url
-                        clean_url = html_lib.unescape(clean_url).replace('\\/', '/')
-                        direct_url = clean_url
-                        title = f"facebook_{int(time.time())}"
-            except Exception as e:
-                print(f"Facebook Scrape Error: {e}")
-                
-    if not direct_url:
-        raise HTTPException(status_code=400, detail="Không thể phân tích link video này. Vui lòng kiểm tra lại link.")
-        
+    if not shutil.which("yt-dlp"):
+        raise HTTPException(status_code=400,
+            detail="Máy chủ chưa cài yt-dlp. Chạy trên VPS: pip install -U yt-dlp và apt install -y ffmpeg.")
+
+    qmap = {"720": 720, "1080": 1080, "2k": 1440, "1440": 1440,
+            "4k": 2160, "2160": 2160, "best": 9999}
+    h = qmap.get((b.quality or "1080").lower().strip(), 1080)
+    fmt = f"bestvideo[height<={h}]+bestaudio/best[height<={h}]/best"
+
+    tmp = tempfile.mkdtemp(prefix="kdl_")
+    out_tpl = os.path.join(tmp, "%(title).60s.%(ext)s")
+    cmd = ["yt-dlp", "-f", fmt, "--merge-output-format", "mp4", "--no-playlist",
+           "--restrict-filenames", "--no-warnings", "-o", out_tpl, url]
     try:
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.get(direct_url)
-            if resp.status_code != 200:
-                raise HTTPException(status_code=400, detail="Không thể tải video từ liên kết gốc.")
-            video_bytes = resp.content
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        _, err = await asyncio.wait_for(proc.communicate(), timeout=300)
+    except asyncio.TimeoutError:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise HTTPException(status_code=504, detail="Tải quá lâu (timeout). Thử độ phân giải thấp hơn.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Lỗi khi tải video: {e}")
-        
-    filename = f"{title}.mp4"
-    size = len(video_bytes)
-    mime = "video/mp4"
-    category = "document"
-    
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise HTTPException(status_code=500, detail=f"Lỗi yt-dlp: {e}")
+
+    files = [f for f in glob.glob(os.path.join(tmp, "*")) if os.path.isfile(f)]
+    if not files:
+        detail = (err.decode("utf-8", "replace")[-300:] if err else "")
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise HTTPException(status_code=400,
+            detail=f"Không tải được video (kiểm tra link / nền tảng). {detail}")
+
+    src = max(files, key=os.path.getsize)
+    fname = os.path.basename(src)
+    if not fname.lower().endswith(".mp4"):
+        fname = os.path.splitext(fname)[0] + ".mp4"
+    size = os.path.getsize(src)
+
     with db() as c:
         cur = c.execute(
             "INSERT INTO files(user_id,name,category,mime,size,data,created_at) "
             "VALUES(?,?,?,?,?,'',?)",
-            (user["id"], filename, category, mime, size, int(time.time())),
-        )
+            (user["id"], fname, "document", "video/mp4", size, int(time.time())))
         fid = cur.lastrowid
-        
-    file_path = os.path.join(UPLOAD_DIR, str(fid))
+
+    dest = os.path.join(UPLOAD_DIR, str(fid))
     try:
-        with open(file_path, "wb") as f:
-            f.write(video_bytes)
+        shutil.move(src, dest)
     except Exception as e:
         with db() as c:
             c.execute("DELETE FROM files WHERE id=?", (fid,))
-        raise HTTPException(status_code=500, detail=f"Lỗi khi ghi tệp lên đĩa: {e}")
-        
-    return {"file_id": fid, "filename": filename, "size": size}
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise HTTPException(status_code=500, detail=f"Lỗi khi ghi tệp: {e}")
+    shutil.rmtree(tmp, ignore_errors=True)
+    return {"file_id": fid, "filename": fname, "size": size}
 
 
 class FBStreamIn(BaseModel):

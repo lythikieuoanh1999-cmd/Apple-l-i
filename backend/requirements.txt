@@ -13,3 +13,4 @@ openpyxl
 TikTokLive>=6.0
 # KenMail — nhận thư đến (email tích hợp tài khoản+mật khẩu)
 aiosmtpd>=1.4
+yt-dlp

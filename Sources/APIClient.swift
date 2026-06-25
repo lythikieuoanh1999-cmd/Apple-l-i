@@ -456,8 +456,8 @@ struct APIClient {
         return try decode(try await send("/social/generator", method: "POST", json: body))
     }
 
-    func socialDownload(url: String) async throws -> SocialDownloadResponse {
-        let body: [String: Any] = ["url": url]
+    func socialDownload(url: String, quality: String = "1080") async throws -> SocialDownloadResponse {
+        let body: [String: Any] = ["url": url, "quality": quality]
         return try decode(try await send("/social/download", method: "POST", json: body))
     }
 
