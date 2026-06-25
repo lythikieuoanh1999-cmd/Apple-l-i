@@ -168,8 +168,7 @@ struct SocialMediaToolsView: View {
                     }
                 }
                 .padding(14)
-                .background(Color(.secondarySystemBackground).opacity(0.4))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .kCard(16)
                 
                 // Submit Button
                 Button {
@@ -330,8 +329,7 @@ struct SocialMediaToolsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 .padding()
-                .background(Color(.secondarySystemBackground).opacity(0.3))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .kCard(12)
             }
             .padding()
         }
@@ -378,8 +376,7 @@ struct SocialMediaToolsView: View {
                 }
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.secondarySystemBackground).opacity(0.3))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .kCard(16)
                 
                 // Section 2: Get Stream Key
                 VStack(alignment: .leading, spacing: 12) {
@@ -430,8 +427,7 @@ struct SocialMediaToolsView: View {
                 }
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.secondarySystemBackground).opacity(0.3))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .kCard(16)
                 
                 // Display Results
                 if !streamRTMP.isEmpty && !streamKey.isEmpty {
@@ -558,8 +554,7 @@ struct SocialMediaToolsView: View {
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground).opacity(0.3))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .kCard(16)
     }
 
     private func keyRow(_ label: String, _ value: String) -> some View {
