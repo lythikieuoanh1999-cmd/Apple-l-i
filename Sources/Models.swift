@@ -298,57 +298,6 @@ struct TranslateResponse: Decodable {
     let source: String?
 }
 
-// KenMail — email tích hợp
-struct Mailbox: Decodable, Identifiable {
-    let id: Int
-    let address: String
-    let phone: String?
-    let createdAt: Int?
-    let unseen: Int?
-}
-struct MailboxListResponse: Decodable {
-    let mailboxes: [Mailbox]
-    let domain: String
-}
-struct MailboxCreateResponse: Decodable {
-    let id: Int
-    let address: String
-}
-struct MailDomain: Codable, Identifiable, Hashable {
-    let id: Int
-    let domain: String
-    let createdAt: Int?
-}
-struct MailDomainListResponse: Decodable {
-    let domains: [MailDomain]
-}
-struct MailDomainAddResponse: Decodable {
-    let id: Int
-    let domain: String
-}
-struct MailCredential: Decodable, Identifiable {
-    var id: String { address }
-    let address: String
-    let password: String
-}
-struct MailBulkResponse: Decodable {
-    let created: [MailCredential]
-    let count: Int
-}
-struct MailItem: Decodable, Identifiable {
-    let id: Int
-    let direction: String     // in | out
-    let fromAddr: String?
-    let toAddr: String?
-    let subject: String?
-    let body: String?
-    let createdAt: Int?
-    let seen: Int?
-}
-struct MailInboxResponse: Decodable {
-    let mails: [MailItem]
-}
-
 // KENIOS AI — API key cấp cho người khác
 struct ApiTokenCreateResponse: Decodable { let token: String }
 struct ApiTokenItem: Decodable, Identifiable {

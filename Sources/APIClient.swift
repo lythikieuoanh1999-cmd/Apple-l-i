@@ -507,46 +507,6 @@ struct APIClient {
         try decode(try await send("/devices"))
     }
 
-    // ---- KenMail (email tích hợp tài khoản + mật khẩu) ----
-    func mailCreate(local: String, password: String, domain: String? = nil,
-                    phone: String? = nil) async throws -> MailboxCreateResponse {
-        var body: [String: Any] = ["local": local, "password": password]
-        if let domain, !domain.isEmpty { body["domain"] = domain }
-        if let phone, !phone.isEmpty { body["phone"] = phone }
-        return try decode(try await send("/mail/create", method: "POST", json: body))
-    }
-    func mailList() async throws -> MailboxListResponse {
-        try decode(try await send("/mail/list"))
-    }
-    func mailBulkCreate(count: Int, prefix: String = "", domain: String? = nil) async throws -> MailBulkResponse {
-        var body: [String: Any] = ["count": count, "prefix": prefix]
-        if let domain, !domain.isEmpty { body["domain"] = domain }
-        return try decode(try await send("/mail/bulk-create", method: "POST", json: body))
-    }
-    func mailDomainsList() async throws -> [MailDomain] {
-        let resp: MailDomainListResponse = try decode(try await send("/mail/domains"))
-        return resp.domains
-    }
-    func mailDomainsAdd(domain: String) async throws -> MailDomainAddResponse {
-        try decode(try await send("/mail/domains", method: "POST", json: ["domain": domain]))
-    }
-    func mailDomainsDelete(id: Int) async throws -> MessageResponse {
-        try decode(try await send("/mail/domains/\(id)", method: "DELETE"))
-    }
-    func mailInbox(mailboxId: Int) async throws -> MailInboxResponse {
-        try decode(try await send("/mail/inbox?mailbox_id=\(mailboxId)"))
-    }
-    func mailSend(mailboxId: Int, to: String, subject: String, body: String) async throws {
-        _ = try await send("/mail/send", method: "POST",
-                           json: ["mailbox_id": mailboxId, "to": to, "subject": subject, "body": body])
-    }
-    func mailSeen(mailId: Int) async throws {
-        _ = try await send("/mail/seen/\(mailId)", method: "POST")
-    }
-    func mailDelete(mailId: Int) async throws {
-        _ = try await send("/mail/\(mailId)", method: "DELETE")
-    }
-
     func encryptCode(code: String, language: String, level: String) async throws -> EncryptResponse {
         let body: [String: Any] = ["code": code, "language": language, "level": level]
         return try decode(try await send("/code/encrypt", method: "POST", json: body))

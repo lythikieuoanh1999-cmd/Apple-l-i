@@ -185,7 +185,7 @@ struct RegisterView: View {
             codeSent = true
             switch r.channel {
             case "external": otpInfo = "Đã gửi mã tới \(email). Kiểm tra hộp thư (cả mục Spam)."
-            case "internal": otpInfo = "Đã gửi mã vào hộp thư KenMail \(email)."
+            case "internal": otpInfo = "Đã gửi mã vào hộp thư \(email)."
             default:
                 otpInfo = r.hint ?? "Chưa gửi được mã. Kiểm tra cấu hình email trên máy chủ."
             }
