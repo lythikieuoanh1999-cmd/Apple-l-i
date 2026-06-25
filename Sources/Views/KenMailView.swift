@@ -220,12 +220,36 @@ struct KenMailView: View {
                     Text("Từ: \(m.fromAddr ?? "?")").font(.caption).foregroundStyle(.secondary)
                     Text("Tới: \(m.toAddr ?? "?")").font(.caption).foregroundStyle(.secondary)
                     Divider()
+                    // Tự nhận diện mã xác nhận (OTP) trong thư → nút copy nhanh
+                    if let code = Self.detectOTP((m.subject ?? "") + " " + (m.body ?? "")) {
+                        Button { UIPasteboard.general.string = code } label: {
+                            HStack {
+                                Image(systemName: "key.fill")
+                                Text("Mã xác nhận: \(code)").font(.headline.monospacedDigit())
+                                Spacer()
+                                Image(systemName: "doc.on.doc")
+                            }
+                            .padding(12).background(Theme.accent.opacity(0.15))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }.buttonStyle(.plain)
+                    }
                     Text(m.body ?? "").font(.body).textSelection(.enabled)
                 }.padding()
             }
             .navigationTitle("Thư").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Đóng") { openMail = nil } } }
         }
+    }
+
+    /// Tìm mã OTP (4–8 chữ số) trong nội dung thư.
+    static func detectOTP(_ text: String) -> String? {
+        let pattern = "\\b[0-9]{4,8}\\b"
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(text.startIndex..., in: text)
+        if let m = re.firstMatch(in: text, range: range), let r = Range(m.range, in: text) {
+            return String(text[r])
+        }
+        return nil
     }
 
     // MARK: - Soạn thư

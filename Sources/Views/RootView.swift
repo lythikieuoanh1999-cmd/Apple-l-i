@@ -48,6 +48,9 @@ struct MainTabView: View {
             KenMailView() // ← THÊM: email tích hợp KenMail (@kenios.store)
                 .tabItem { Label("KenMail", systemImage: "envelope.fill") }
                 .tag(10)
+            ToolsView() // ← THÊM: Tiện ích (2FA, két mật khẩu, QR, net tools)
+                .tabItem { Label("Tiện ích", systemImage: "wrench.and.screwdriver.fill") }
+                .tag(11)
             SettingsView()
                 .tabItem { Label("Cài đặt", systemImage: "gearshape.fill") }
                 .tag(5)
