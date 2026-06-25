@@ -450,6 +450,28 @@ struct APIClient {
                                   json: ["text": text, "target": target, "source": source]))
     }
 
+    // ---- CenMail (email tích hợp tài khoản + mật khẩu) ----
+    func mailCreate(local: String, password: String) async throws -> MailboxCreateResponse {
+        try decode(try await send("/mail/create", method: "POST",
+                                  json: ["local": local, "password": password]))
+    }
+    func mailList() async throws -> MailboxListResponse {
+        try decode(try await send("/mail/list"))
+    }
+    func mailInbox(mailboxId: Int) async throws -> MailInboxResponse {
+        try decode(try await send("/mail/inbox?mailbox_id=\(mailboxId)"))
+    }
+    func mailSend(mailboxId: Int, to: String, subject: String, body: String) async throws {
+        _ = try await send("/mail/send", method: "POST",
+                           json: ["mailbox_id": mailboxId, "to": to, "subject": subject, "body": body])
+    }
+    func mailSeen(mailId: Int) async throws {
+        _ = try await send("/mail/seen/\(mailId)", method: "POST")
+    }
+    func mailDelete(mailId: Int) async throws {
+        _ = try await send("/mail/\(mailId)", method: "DELETE")
+    }
+
     func encryptCode(code: String, language: String, level: String) async throws -> EncryptResponse {
         let body: [String: Any] = ["code": code, "language": language, "level": level]
         return try decode(try await send("/code/encrypt", method: "POST", json: body))

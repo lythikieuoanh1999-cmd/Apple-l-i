@@ -298,6 +298,35 @@ struct TranslateResponse: Decodable {
     let source: String?
 }
 
+// CenMail — email tích hợp
+struct Mailbox: Decodable, Identifiable {
+    let id: Int
+    let address: String
+    let createdAt: Int?
+    let unseen: Int?
+}
+struct MailboxListResponse: Decodable {
+    let mailboxes: [Mailbox]
+    let domain: String
+}
+struct MailboxCreateResponse: Decodable {
+    let id: Int
+    let address: String
+}
+struct MailItem: Decodable, Identifiable {
+    let id: Int
+    let direction: String     // in | out
+    let fromAddr: String?
+    let toAddr: String?
+    let subject: String?
+    let body: String?
+    let createdAt: Int?
+    let seen: Int?
+}
+struct MailInboxResponse: Decodable {
+    let mails: [MailItem]
+}
+
 struct EncryptResponse: Decodable {
     let result: String
 }

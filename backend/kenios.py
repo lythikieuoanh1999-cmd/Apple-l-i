@@ -50,6 +50,15 @@ TOKEN_TTL       = int(os.getenv("TOKEN_TTL", str(60 * 60 * 24 * 30)))  # 30 ngà
 REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "120"))
 SANDBOX_TIMEOUT = int(os.getenv("SANDBOX_TIMEOUT", "15"))  # giây chạy code
 
+# ----- Email tích hợp (CenMail) chạy chung trong KENIOS -----
+MAIL_DOMAIN     = os.getenv("MAIL_DOMAIN", "kenios.store")
+MAIL_ENABLE     = os.getenv("MAIL_ENABLE", "1") == "1"      # bật bộ nhận thư SMTP nội bộ
+MAIL_SMTP_PORT  = int(os.getenv("MAIL_SMTP_PORT", "25"))    # cổng nhận thư đến (cần MX + mở port 25)
+SMTP_RELAY_HOST = os.getenv("SMTP_RELAY_HOST", "")          # gửi ra ngoài qua relay (vd smtp.gmail.com)
+SMTP_RELAY_PORT = int(os.getenv("SMTP_RELAY_PORT", "587"))
+SMTP_RELAY_USER = os.getenv("SMTP_RELAY_USER", "")
+SMTP_RELAY_PASS = os.getenv("SMTP_RELAY_PASS", "")
+
 # Thư mục lưu tệp tải lên của user trên đĩa
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -297,6 +306,24 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS admin_apikeys(
                 provider TEXT PRIMARY KEY,
                 enc_key TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS mailboxes(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                address TEXT UNIQUE NOT NULL,
+                pw_hash TEXT NOT NULL,
+                owner_uid INTEGER,
+                created_at INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS mails(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mailbox_id INTEGER NOT NULL,
+                direction TEXT DEFAULT 'in',
+                from_addr TEXT,
+                to_addr TEXT,
+                subject TEXT,
+                body TEXT,
+                created_at INTEGER,
+                seen INTEGER DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS conversations(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1086,6 +1113,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"],
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
+    start_mail_smtp()
 
 
 # ======================== Pydantic Models ========================
@@ -2704,6 +2732,192 @@ async def tiktok_live_disconnect(b: TikTokLiveIn, user=Depends(get_user)) -> dic
         if task:
             task.cancel()
     return {"ok": True}
+
+
+# ======================== CenMail — Email tích hợp (tài khoản + mật khẩu) ========================
+import re as _re_mail
+import smtplib as _smtplib
+from email.message import EmailMessage as _EmailMessage
+
+_LOCAL_RE = _re_mail.compile(r"^[a-z0-9._-]{2,40}$")
+
+
+class MailCreateIn(BaseModel):
+    local: str            # phần trước @ (vd "cong" → cong@kenios.store)
+    password: str
+
+
+class MailSendIn(BaseModel):
+    mailbox_id: int
+    to: str
+    subject: str = ""
+    body: str = ""
+
+
+def _mailbox_owned(mailbox_id: int, uid: int) -> sqlite3.Row:
+    with db() as c:
+        row = c.execute("SELECT * FROM mailboxes WHERE id=? AND owner_uid=?",
+                        (mailbox_id, uid)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Không tìm thấy hộp thư của bạn.")
+    return row
+
+
+@app.post("/mail/create")
+def mail_create(b: MailCreateIn, user=Depends(get_user)) -> dict[str, Any]:
+    local = (b.local or "").strip().lower()
+    if not _LOCAL_RE.match(local):
+        raise HTTPException(status_code=400,
+            detail="Tên hộp thư 2–40 ký tự, chỉ gồm a-z 0-9 . _ -")
+    if len(b.password) < 6:
+        raise HTTPException(status_code=400, detail="Mật khẩu hộp thư ≥ 6 ký tự.")
+    address = f"{local}@{MAIL_DOMAIN}"
+    with db() as c:
+        if c.execute("SELECT 1 FROM mailboxes WHERE address=?", (address,)).fetchone():
+            raise HTTPException(status_code=409, detail="Địa chỉ này đã tồn tại.")
+        cur = c.execute(
+            "INSERT INTO mailboxes(address,pw_hash,owner_uid,created_at) VALUES(?,?,?,?)",
+            (address, hash_pw(b.password), user["id"], int(time.time())))
+        mid = cur.lastrowid
+    return {"id": mid, "address": address}
+
+
+@app.get("/mail/list")
+def mail_list(user=Depends(get_user)) -> dict[str, Any]:
+    with db() as c:
+        rows = c.execute(
+            "SELECT id,address,created_at FROM mailboxes WHERE owner_uid=? ORDER BY id DESC",
+            (user["id"],)).fetchall()
+        out = []
+        for r in rows:
+            unseen = c.execute("SELECT COUNT(*) n FROM mails WHERE mailbox_id=? AND seen=0",
+                               (r["id"],)).fetchone()["n"]
+            out.append({"id": r["id"], "address": r["address"],
+                        "created_at": r["created_at"], "unseen": unseen})
+    return {"mailboxes": out, "domain": MAIL_DOMAIN}
+
+
+@app.get("/mail/inbox")
+def mail_inbox(mailbox_id: int, user=Depends(get_user)) -> dict[str, Any]:
+    _mailbox_owned(mailbox_id, user["id"])
+    with db() as c:
+        rows = c.execute(
+            "SELECT id,direction,from_addr,to_addr,subject,body,created_at,seen "
+            "FROM mails WHERE mailbox_id=? ORDER BY id DESC LIMIT 200", (mailbox_id,)).fetchall()
+    return {"mails": [dict(r) for r in rows]}
+
+
+@app.post("/mail/seen/{mail_id}")
+def mail_seen(mail_id: int, user=Depends(get_user)) -> dict[str, Any]:
+    with db() as c:
+        c.execute("UPDATE mails SET seen=1 WHERE id=? AND mailbox_id IN "
+                  "(SELECT id FROM mailboxes WHERE owner_uid=?)", (mail_id, user["id"]))
+    return {"ok": True}
+
+
+@app.delete("/mail/{mail_id}")
+def mail_delete(mail_id: int, user=Depends(get_user)) -> dict[str, Any]:
+    with db() as c:
+        c.execute("DELETE FROM mails WHERE id=? AND mailbox_id IN "
+                  "(SELECT id FROM mailboxes WHERE owner_uid=?)", (mail_id, user["id"]))
+    return {"ok": True}
+
+
+@app.post("/mail/send")
+def mail_send(b: MailSendIn, user=Depends(get_user)) -> dict[str, Any]:
+    box = _mailbox_owned(b.mailbox_id, user["id"])
+    to = (b.to or "").strip()
+    if "@" not in to:
+        raise HTTPException(status_code=400, detail="Địa chỉ nhận không hợp lệ.")
+    now = int(time.time())
+    # Lưu bản gửi đi
+    with db() as c:
+        c.execute("INSERT INTO mails(mailbox_id,direction,from_addr,to_addr,subject,body,created_at,seen) "
+                  "VALUES(?,?,?,?,?,?,?,1)",
+                  (box["id"], "out", box["address"], to, b.subject, b.body, now))
+        # Nội bộ: nếu người nhận cũng là hộp thư trong hệ thống → giao ngay
+        inbox = c.execute("SELECT id FROM mailboxes WHERE address=?", (to.lower(),)).fetchone()
+        if inbox:
+            c.execute("INSERT INTO mails(mailbox_id,direction,from_addr,to_addr,subject,body,created_at,seen) "
+                      "VALUES(?,?,?,?,?,?,?,0)",
+                      (inbox["id"], "in", box["address"], to, b.subject, b.body, now))
+            return {"ok": True, "delivery": "internal"}
+    # Bên ngoài: cần SMTP relay
+    if not SMTP_RELAY_HOST:
+        raise HTTPException(status_code=400,
+            detail="Đã lưu vào mục Đã gửi nhưng chưa cấu hình SMTP relay để gửi ra ngoài "
+                   "(đặt SMTP_RELAY_HOST/USER/PASS). Gửi nội bộ @"+MAIL_DOMAIN+" thì không cần.")
+    try:
+        m = _EmailMessage()
+        m["From"] = box["address"]; m["To"] = to; m["Subject"] = b.subject
+        m.set_content(b.body or "")
+        with _smtplib.SMTP(SMTP_RELAY_HOST, SMTP_RELAY_PORT, timeout=30) as s:
+            s.starttls()
+            if SMTP_RELAY_USER:
+                s.login(SMTP_RELAY_USER, SMTP_RELAY_PASS)
+            s.send_message(m)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Gửi ra ngoài thất bại: {e}")
+    return {"ok": True, "delivery": "external"}
+
+
+def _deliver_incoming(rcpt: str, sender: str, subject: str, body: str) -> None:
+    """Lưu thư đến vào hộp thư tương ứng (gọi từ bộ nhận SMTP)."""
+    rcpt = (rcpt or "").strip().lower()
+    try:
+        with db() as c:
+            box = c.execute("SELECT id FROM mailboxes WHERE address=?", (rcpt,)).fetchone()
+            if not box:
+                return
+            c.execute("INSERT INTO mails(mailbox_id,direction,from_addr,to_addr,subject,body,created_at,seen) "
+                      "VALUES(?,?,?,?,?,?,?,0)",
+                      (box["id"], "in", sender, rcpt, subject, body, int(time.time())))
+    except Exception as e:
+        logging.warning("deliver_incoming lỗi: %s", e)
+
+
+def start_mail_smtp() -> None:
+    """Khởi động bộ nhận thư SMTP (aiosmtpd) trong tiến trình — cần MX trỏ về VPS + mở port 25."""
+    if not MAIL_ENABLE:
+        return
+    try:
+        from aiosmtpd.controller import Controller
+        import email as _email_mod
+    except Exception:
+        logging.warning("CenMail: chưa cài aiosmtpd → không nhận được thư đến. Cài: pip install aiosmtpd")
+        return
+
+    def _extract_body(msg) -> str:
+        try:
+            if msg.is_multipart():
+                for part in msg.walk():
+                    if part.get_content_type() == "text/plain":
+                        return part.get_payload(decode=True).decode("utf-8", "replace")
+                return msg.get_payload(decode=True).decode("utf-8", "replace")
+            payload = msg.get_payload(decode=True)
+            return payload.decode("utf-8", "replace") if payload else str(msg.get_payload())
+        except Exception:
+            return ""
+
+    class _Handler:
+        async def handle_DATA(self, server, session, envelope):
+            try:
+                msg = _email_mod.message_from_bytes(envelope.content)
+                subject = msg.get("Subject", "")
+                sender = envelope.mail_from or msg.get("From", "")
+                body = _extract_body(msg)
+                for rcpt in envelope.rcpt_tos:
+                    _deliver_incoming(rcpt, sender, subject, body)
+            except Exception as e:
+                logging.warning("SMTP handle_DATA lỗi: %s", e)
+            return "250 Message accepted"
+
+    try:
+        controller = Controller(_Handler(), hostname="0.0.0.0", port=MAIL_SMTP_PORT)
+        controller.start()
+        logging.info("CenMail SMTP nhận thư tại cổng %s cho @%s", MAIL_SMTP_PORT, MAIL_DOMAIN)
+    except Exception as e:
+        logging.warning("CenMail: không khởi động được SMTP cổng %s: %s", MAIL_SMTP_PORT, e)
 
 
 # ======================== Dịch sang tiếng Việt (TTS đa ngôn ngữ) ========================
