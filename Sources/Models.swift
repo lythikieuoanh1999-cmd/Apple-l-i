@@ -347,6 +347,18 @@ struct ApiTokenItem: Decodable, Identifiable {
 }
 struct ApiTokenListResponse: Decodable { let tokens: [ApiTokenItem] }
 
+// Thiết bị đăng ký (UDID) cho phân phối ad-hoc
+struct DeviceItem: Decodable, Identifiable {
+    var id: String { udid }
+    let udid: String
+    let product: String?
+    let version: String?
+    let serial: String?
+    let name: String?
+    let createdAt: Int?
+}
+struct DevicesResponse: Decodable { let devices: [DeviceItem] }
+
 // OTP — mã xác nhận email
 struct OtpSendResponse: Decodable {
     let sent: Bool

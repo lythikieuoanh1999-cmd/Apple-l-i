@@ -39,7 +39,7 @@ from typing import Any, Optional
 import httpx
 from fastapi import FastAPI, Request, HTTPException, Header, Depends, UploadFile, File as FastAPIFile, Form, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse, HTMLResponse, Response
 from pydantic import BaseModel
 
 # ========================= Cấu hình =========================
@@ -353,6 +353,14 @@ def init_db() -> None:
                 owner_uid INTEGER,
                 name TEXT,
                 calls INTEGER DEFAULT 0,
+                created_at INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS devices(
+                udid TEXT PRIMARY KEY,
+                product TEXT,
+                version TEXT,
+                serial TEXT,
+                name TEXT,
                 created_at INTEGER
             );
             CREATE TABLE IF NOT EXISTS conversations(
@@ -1333,6 +1341,88 @@ async def public_kenios_chat(b: PublicChatIn) -> dict[str, Any]:
     reply = await call_provider("kenios", KENIOS_AI_KEY or "ollama", b.model, [],
                                 b.message, system_override=b.system)
     return {"reply": reply, "model": b.model or KENIOS_AI_MODEL}
+
+
+# ======================== Đăng ký thiết bị (lấy UDID để ký app ad-hoc) ========================
+@app.get("/enroll/start", response_class=HTMLResponse)
+def enroll_start(request: Request) -> Any:
+    base = str(request.base_url).rstrip("/")
+    return f"""<!doctype html><html><head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'>
+<title>Đăng ký thiết bị KENIOS</title>
+<style>body{{font-family:-apple-system;background:#0b1020;color:#fff;text-align:center;padding:40px}}
+a.btn{{display:inline-block;margin-top:24px;padding:16px 28px;background:#4f46e5;color:#fff;
+text-decoration:none;border-radius:14px;font-size:18px;font-weight:700}}
+p{{color:#aab;max-width:520px;margin:10px auto}}</style></head>
+<body><h2>Đăng ký thiết bị KENIOS</h2>
+<p>Bấm nút bên dưới để lấy <b>UDID</b> thiết bị (cài hồ sơ cấu hình). UDID dùng để ký app cho riêng máy bạn.</p>
+<a class='btn' href='{base}/enroll/profile'>Lấy UDID thiết bị</a>
+<p style='margin-top:30px;font-size:13px'>Sau khi cài app đã ký: vào <b>Cài đặt → Cài đặt chung → VPN &amp; Quản lý thiết bị</b> → bấm tên nhà phát triển → <b>Tin cậy</b>.</p>
+</body></html>"""
+
+
+@app.get("/enroll/profile")
+def enroll_profile(request: Request) -> Response:
+    base = str(request.base_url).rstrip("/")
+    puid = secrets.token_hex(8)
+    profile = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>PayloadContent</key>
+  <dict>
+    <key>URL</key><string>{base}/enroll/callback</string>
+    <key>DeviceAttributes</key>
+    <array>
+      <string>UDID</string><string>PRODUCT</string><string>VERSION</string>
+      <string>SERIAL</string><string>DEVICE_NAME</string>
+    </array>
+  </dict>
+  <key>PayloadOrganization</key><string>KENIOS</string>
+  <key>PayloadDisplayName</key><string>Đăng ký thiết bị KENIOS</string>
+  <key>PayloadVersion</key><integer>1</integer>
+  <key>PayloadUUID</key><string>{puid}</string>
+  <key>PayloadIdentifier</key><string>com.kenios.enroll</string>
+  <key>PayloadType</key><string>Profile Service</string>
+</dict></plist>"""
+    return Response(content=profile, media_type="application/x-apple-aspen-config")
+
+
+@app.post("/enroll/callback", response_class=HTMLResponse)
+async def enroll_callback(request: Request) -> Any:
+    body = await request.body()
+    import plistlib
+    udid = ""; info: dict[str, Any] = {}
+    start = body.find(b"<?xml")
+    end = body.find(b"</plist>")
+    if start != -1 and end != -1:
+        try:
+            info = plistlib.loads(body[start:end + 8])
+            udid = str(info.get("UDID", ""))
+        except Exception:
+            udid = ""
+    if udid:
+        with db() as c:
+            c.execute("INSERT OR REPLACE INTO devices(udid,product,version,serial,name,created_at) "
+                      "VALUES(?,?,?,?,?,?)",
+                      (udid, str(info.get("PRODUCT", "")), str(info.get("VERSION", "")),
+                       str(info.get("SERIAL", "")), str(info.get("DEVICE_NAME", "")), int(time.time())))
+    return f"""<!doctype html><html><head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'>
+<style>body{{font-family:-apple-system;background:#0b1020;color:#fff;text-align:center;padding:50px}}
+.box{{background:#161c33;border-radius:14px;padding:20px;max-width:520px;margin:0 auto}}
+code{{color:#8ef;word-break:break-all}}</style></head><body>
+<h2>✅ Đã ghi nhận thiết bị</h2>
+<div class='box'><p>UDID của bạn:</p><h3><code>{udid or 'Không đọc được'}</code></h3></div>
+<p style='color:#aab;margin-top:20px'>Gửi UDID này cho nhà phát triển để được ký app. Sau khi cài bản đã ký, nhớ vào Cài đặt → VPN &amp; Quản lý thiết bị để <b>Tin cậy</b>.</p>
+</body></html>"""
+
+
+@app.get("/devices")
+def devices_list(admin=Depends(get_admin)) -> dict[str, Any]:
+    with db() as c:
+        rows = c.execute("SELECT udid,product,version,serial,name,created_at "
+                         "FROM devices ORDER BY created_at DESC").fetchall()
+    return {"devices": [dict(r) for r in rows]}
 
 
 # ======================== Auth ========================

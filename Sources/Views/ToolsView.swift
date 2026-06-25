@@ -86,6 +86,11 @@ struct ToolsView: View {
                         Label("Két mật khẩu", systemImage: "key.fill")
                     }
                 }
+                Section("Phân phối") {
+                    NavigationLink { DevicesView() } label: {
+                        Label("Đăng ký thiết bị (UDID)", systemImage: "iphone.gen3")
+                    }
+                }
                 Section("Tiện ích") {
                     NavigationLink { QRToolView() } label: {
                         Label("Mã QR (tạo & quét)", systemImage: "qrcode")

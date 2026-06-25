@@ -502,6 +502,11 @@ struct APIClient {
         _ = try await send("/apitokens/\(token)", method: "DELETE")
     }
 
+    // ---- Thiết bị đăng ký (UDID) ----
+    func listDevices() async throws -> DevicesResponse {
+        try decode(try await send("/devices"))
+    }
+
     // ---- KenMail (email tích hợp tài khoản + mật khẩu) ----
     func mailCreate(local: String, password: String) async throws -> MailboxCreateResponse {
         try decode(try await send("/mail/create", method: "POST",
