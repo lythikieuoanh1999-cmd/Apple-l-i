@@ -2,6 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import QuickLook
 import WebKit
+import Photos
 
 // Điểm phát Live (RTMP + stream key) lưu lại để phát đa nền tảng
 struct LiveTarget: Identifiable, Codable {
@@ -42,6 +43,8 @@ struct SocialMediaToolsView: View {
     @State private var downloadedFileSize: Int = 0
     @State private var downloaderError: String?
     @State private var previewURL: URL?
+    @State private var savingToPhotos = false
+    @State private var saveMessage: String?
     
     // Live Tools States
     @State private var livePlatform = "tiktok"
@@ -294,14 +297,37 @@ struct SocialMediaToolsView: View {
                                 Label("Xem trước", systemImage: "play.fill")
                             }
                             .buttonStyle(.borderedProminent)
-                            
-                            // Mở thư viện
+
+                            // Mở thư viện trong app
                             Button {
                                 store.tab = 3 // LibraryView tag
                             } label: {
-                                Label("Thư viện", systemImage: "clock.arrow.circlepath")
+                                Label("Thư viện app", systemImage: "clock.arrow.circlepath")
                             }
                             .buttonStyle(.bordered)
+                        }
+
+                        // Lưu vào Thư viện ảnh của máy (camera roll)
+                        Button {
+                            Task { await saveToPhotos(fileId) }
+                        } label: {
+                            HStack {
+                                if savingToPhotos { ProgressView().tint(.white) }
+                                Image(systemName: "square.and.arrow.down.fill")
+                                Text(savingToPhotos ? "Đang lưu vào máy..." : "Lưu vào Thư viện máy")
+                            }
+                            .font(.subheadline.bold()).foregroundStyle(.white)
+                            .frame(maxWidth: .infinity).frame(height: 46)
+                            .background(savingToPhotos ? Color.gray : Theme.purple)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .disabled(savingToPhotos)
+
+                        if let saveMessage {
+                            Text(saveMessage)
+                                .font(.caption)
+                                .foregroundStyle(saveMessage.contains("✓") ? .green : .red)
+                                .multilineTextAlignment(.center)
                         }
                     }
                     .padding()
@@ -628,6 +654,7 @@ struct SocialMediaToolsView: View {
         downloadedFileId = nil
         downloadedFileName = nil
         downloaderError = nil
+        saveMessage = nil
         do {
             let res = try await store.api.socialDownload(url: videoURL, quality: videoQuality)
             downloadedFileId = res.fileId
@@ -652,7 +679,46 @@ struct SocialMediaToolsView: View {
             downloaderError = error.localizedDescription
         }
     }
-    
+
+    // Lưu video/ảnh đã tải về vào Thư viện ảnh của máy (camera roll)
+    private func saveToPhotos(_ fileId: Int) async {
+        savingToPhotos = true
+        saveMessage = nil
+        do {
+            // Tải file về thư mục tạm
+            let (tempURL, filename) = try await store.api.downloadFileRaw(fileId)
+            let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            let destinationURL = cacheDir.appendingPathComponent(filename)
+            try? FileManager.default.removeItem(at: destinationURL)
+            try FileManager.default.copyItem(at: tempURL, to: destinationURL)
+
+            // Xin quyền thêm vào Photos
+            let status = await withCheckedContinuation { (cont: CheckedContinuation<PHAuthorizationStatus, Never>) in
+                PHPhotoLibrary.requestAuthorization(for: .addOnly) { cont.resume(returning: $0) }
+            }
+            guard status == .authorized || status == .limited else {
+                saveMessage = "Chưa được cấp quyền lưu vào Thư viện ảnh. Vào Cài đặt > KENIOS > Ảnh để bật."
+                savingToPhotos = false
+                return
+            }
+
+            let ext = (filename as NSString).pathExtension.lowercased()
+            let isImage = ["jpg", "jpeg", "png", "heic", "gif", "webp"].contains(ext)
+
+            try await PHPhotoLibrary.shared().performChanges {
+                if isImage {
+                    PHAssetCreationRequest.creationRequestForAssetFromImage(atFileURL: destinationURL)
+                } else {
+                    PHAssetCreationRequest.creationRequestForAssetFromVideo(atFileURL: destinationURL)
+                }
+            }
+            saveMessage = isImage ? "Đã lưu ảnh vào Thư viện máy ✓" : "Đã lưu video vào Thư viện máy ✓"
+        } catch {
+            saveMessage = "Lưu thất bại: \(error.localizedDescription)"
+        }
+        savingToPhotos = false
+    }
+
     private func fetchStreamKey() async {
         fetchingStream = true
         streamRTMP = ""

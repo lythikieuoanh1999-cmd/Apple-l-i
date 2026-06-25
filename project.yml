@@ -27,6 +27,7 @@ targets:
           UIApplicationSupportsMultipleScenes: false
         NSCameraUsageDescription: "Cho phép chụp ảnh để đính kèm vào chat AI."
         NSPhotoLibraryUsageDescription: "Cho phép đính ảnh từ thư viện vào chat AI."
+        NSPhotoLibraryAddUsageDescription: "Cho phép lưu video / ảnh đã tải về vào Thư viện ảnh của máy."
         NSMicrophoneUsageDescription: "Cho phép thu âm để chuyển giọng nói thành văn bản."
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
