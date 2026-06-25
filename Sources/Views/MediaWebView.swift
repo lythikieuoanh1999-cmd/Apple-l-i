@@ -83,18 +83,50 @@ struct BrowserWebView: UIViewRepresentable {
     }
 }
 
+// Lối tắt web/game do người dùng tự thêm
+struct WebShortcut: Identifiable, Codable {
+    var id = UUID()
+    var name: String
+    var url: String
+}
+
 struct MediaWebView: View {
     @StateObject private var model = BrowserModel()
     @FocusState private var addressFocused: Bool
 
+    // Lối tắt tùy chỉnh (thêm game/app của bạn)
+    @AppStorage("kenios_web_shortcuts") private var shortcutsRaw = "[]"
+    @State private var showAddShortcut = false
+    @State private var newName = ""
+    @State private var newURL = ""
+
     private let home = "https://m.youtube.com"
     private let shortcuts: [(String, String, String)] = [
         ("YouTube",  "play.tv.fill",          "https://m.youtube.com"),
+        ("Game",     "gamecontroller.fill",   "https://www.crazygames.com"),
         ("Âm nhạc",  "music.note",            "https://soundcloud.com/discover"),
         ("Spotify",  "music.note.list",       "https://open.spotify.com"),
         ("Phim",     "film.fill",             "https://www.youtube.com/results?search_query=phim+hay"),
+        ("CenMail",  "envelope.fill",         "https://mail.cenios.net"),
         ("Tìm kiếm", "magnifyingglass",       "https://www.google.com"),
     ]
+
+    private var customShortcuts: [WebShortcut] {
+        (try? JSONDecoder().decode([WebShortcut].self, from: Data(shortcutsRaw.utf8))) ?? []
+    }
+    private func saveCustom(_ list: [WebShortcut]) {
+        if let d = try? JSONEncoder().encode(list) { shortcutsRaw = String(data: d, encoding: .utf8) ?? "[]" }
+    }
+    private func addCustom() {
+        var url = newURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !url.isEmpty else { return }
+        if !url.lowercased().hasPrefix("http") { url = "https://" + url }
+        let name = newName.trimmingCharacters(in: .whitespaces).isEmpty ? url : newName
+        var list = customShortcuts
+        list.append(WebShortcut(name: name, url: url))
+        saveCustom(list)
+        newName = ""; newURL = ""
+    }
 
     var body: some View {
         NavigationStack {
@@ -138,6 +170,28 @@ struct MediaWebView: View {
                                     .clipShape(Capsule())
                             }.buttonStyle(.plain)
                         }
+                        // Lối tắt do người dùng thêm (game/app riêng)
+                        ForEach(customShortcuts) { s in
+                            Button { model.open(s.url); addressFocused = false } label: {
+                                Label(s.name, systemImage: "star.fill").font(.caption)
+                                    .padding(.horizontal, 12).padding(.vertical, 7)
+                                    .background(Theme.accent.opacity(0.18))
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    saveCustom(customShortcuts.filter { $0.id != s.id })
+                                } label: { Label("Xoá", systemImage: "trash") }
+                            }
+                        }
+                        // Nút thêm lối tắt
+                        Button { newName = ""; newURL = ""; showAddShortcut = true } label: {
+                            Label("Thêm", systemImage: "plus").font(.caption)
+                                .padding(.horizontal, 12).padding(.vertical, 7)
+                                .background(Color(.secondarySystemBackground))
+                                .clipShape(Capsule())
+                        }.buttonStyle(.plain)
                     }
                     .padding(.horizontal)
                 }
@@ -149,6 +203,16 @@ struct MediaWebView: View {
             }
             .navigationTitle("Giải trí")
             .navigationBarTitleDisplayMode(.inline)
+            .alert("Thêm game / app (web)", isPresented: $showAddShortcut) {
+                TextField("Tên (vd: Game của tôi)", text: $newName)
+                TextField("Link (vd: crazygames.com)", text: $newURL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("Thêm") { addCustom() }
+                Button("Huỷ", role: .cancel) { }
+            } message: {
+                Text("Dán link game/website để thêm vào lối tắt và chơi ngay trong app.")
+            }
         }
     }
 }

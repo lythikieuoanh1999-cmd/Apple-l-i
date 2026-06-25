@@ -45,6 +45,9 @@ struct MainTabView: View {
             WindowsSimView() // ← THÊM: Windows giả lập (mô phỏng giao diện)
                 .tabItem { Label("Windows", systemImage: "macwindow") }
                 .tag(9)
+            CenMailView() // ← THÊM: email tạm CenMail (mail.cenios.net)
+                .tabItem { Label("CenMail", systemImage: "envelope.fill") }
+                .tag(10)
             SettingsView()
                 .tabItem { Label("Cài đặt", systemImage: "gearshape.fill") }
                 .tag(5)
