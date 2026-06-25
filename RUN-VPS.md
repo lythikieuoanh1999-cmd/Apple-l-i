@@ -52,10 +52,8 @@ systemctl restart kenios
 
 ---
 
-## 4. (Tuỳ chọn) Bật nhận email thật cho KenMail
-- Trỏ DNS: **MX** `kenios.store → mail.kenios.store`, **A** `mail → IP VPS`.
-- Mở **port 25** (firewall + xin nhà cung cấp mở port 25). Backend đã tự bật bộ nhận SMTP.
-- Gửi ra ngoài (Gmail...) cần SMTP relay — thêm vào `/opt/kenios-src/.env`:
+## 4. (Tuỳ chọn) Gửi OTP qua email khi đăng ký
+- Cần SMTP relay để gửi mail ra ngoài — thêm vào `/opt/kenios-src/.env`:
   ```
   SMTP_RELAY_HOST=smtp.gmail.com
   SMTP_RELAY_PORT=587
@@ -63,7 +61,7 @@ systemctl restart kenios
   SMTP_RELAY_PASS=app-password
   ```
   rồi `systemctl restart kenios`.
-- Muốn webmail thật đầy đủ: xem `mailserver/SETUP-MAIL.md` (Mailcow).
+- Hoặc đặt `OTP_DEBUG=1` để test mà không cần email.
 
 ---
 
@@ -92,5 +90,5 @@ Sửa xong luôn `systemctl restart kenios`.
 | App báo "Không kết nối được máy chủ" | Backend chưa chạy / sai URL-cổng → `systemctl status kenios`, mở cổng firewall |
 | Chọn KENIOS AI báo lỗi kết nối | Chưa cài Ollama → chạy `kenios-ai/install-ai.sh` |
 | AI khác báo 429 | Hết hạn mức free → đổi Groq/OpenRouter hoặc dùng KENIOS AI |
-| KenMail không nhận thư ngoài | Thiếu MX / chưa mở port 25 |
-| OTP không tới | Dùng email @kenios.store, hoặc đặt SMTP_RELAY, hoặc `OTP_DEBUG=1` để test |
+| Tải video lỗi | Thiếu `ffmpeg`/`yt-dlp` → chạy lại `start-vps.sh` |
+| OTP không tới | Đặt SMTP_RELAY, hoặc `OTP_DEBUG=1` để test |

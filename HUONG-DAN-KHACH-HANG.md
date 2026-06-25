@@ -48,18 +48,17 @@ Lần đầu mở app báo "nhà phát triển chưa tin cậy" → làm như sa
 
 | Tab | Làm gì |
 |---|---|
-| 💬 **Trò chuyện** | Chat với **KENIOS AI** (miễn phí, không cần key). Hỏi bài, viết văn, dịch, code... |
-| 👩‍💻 **Lập trình** | Chạy code, viết web/game, Auto-Click, công cụ bảo mật |
-| 🌐 **Mạng xã hội** | Viết content TikTok/Facebook, tải video, công cụ Live |
-| 🔊 **Đọc** | Đọc văn bản thành giọng nói, đọc bình luận TikTok Live, dịch tiếng Việt |
-| 🎬 **Giải trí** | Xem phim, nghe nhạc, thêm game yêu thích |
-| ✉️ **KenMail** | Tạo email riêng nhận thư, tạo nhiều email cùng lúc |
-| 🧰 **Tiện ích** | Mã 2FA, két mật khẩu, tạo/quét QR, trợ lý giọng nói |
+| 🌐 **Mạng xã hội** | Viết content TikTok/Facebook bằng AI, tải video (xem trước + lưu vào máy), công cụ Live |
+| 🗂️ **Thư viện** | Video/ảnh đã tải, file của bạn |
+| 👥 **Bạn bè** | Kết bạn, lời mời, nhắn tin trực tiếp |
+| 🔊 **Đọc** | Đọc văn bản thành giọng nói, đọc bình luận TikTok Live, chạy nền |
+| 🎬 **Giải trí** | Xem phim, nghe nhạc, thêm game yêu thích (chạy trong app, không mở app gốc) |
+| 🧰 **Công cụ** | Công cụ ảnh (tách nền/nén/làm nét), tạo QR, mật khẩu, hashtag, máy tính... |
+| ⚙️ **Cài đặt** | Tài khoản, giao diện, dọn dẹp, xoá cache |
 
-### Mẹo dùng AI
-- Vào tab **Trò chuyện** → trên cùng có **"Chọn AI"** → để **KENIOS AI** là dùng miễn phí.
-- Bấm nút **+** để đính kèm **ảnh / tệp** cho AI xem.
-- Tab **Tiện ích → Trợ lý rảnh tay**: bấm micro để **nói**, AI trả lời và **đọc to**.
+### Mẹo dùng
+- Tab **Mạng xã hội → Tải Video**: dán link TikTok/YouTube/Facebook → chọn độ phân giải → **Xem trước** rồi **Lưu vào Thư viện máy**.
+- Tab **Mạng xã hội → Sáng tạo**: để nhà cung cấp **KENIOS AI** là viết content miễn phí, không cần key.
 
 ---
 
