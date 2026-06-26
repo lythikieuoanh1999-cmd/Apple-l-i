@@ -612,42 +612,5 @@ struct APIClient {
         try decode(try await send("/direct_messages", method: "POST", json: ["receiver_id": receiverId, "content": content]))
     }
 
-    // ---- Proxy mạng (THÊM MỚI) ----
-    func proxyList() async throws -> ProxyListResponse {
-        try decode(try await send("/proxy/list"))
-    }
-    func proxyAdd(label: String?, scheme: String, host: String, port: Int,
-                  username: String?, password: String?, region: String?,
-                  source: String) async throws -> ProxyAddResponse {
-        var body: [String: Any] = ["scheme": scheme, "host": host, "port": port, "source": source]
-        if let label, !label.isEmpty { body["label"] = label }
-        if let username, !username.isEmpty { body["username"] = username }
-        if let password, !password.isEmpty { body["password"] = password }
-        if let region, !region.isEmpty { body["region"] = region }
-        return try decode(try await send("/proxy/add", method: "POST", json: body))
-    }
-    func proxyImport(text: String, scheme: String, region: String?,
-                     source: String) async throws -> ProxyImportResponse {
-        var body: [String: Any] = ["text": text, "scheme": scheme, "source": source]
-        if let region, !region.isEmpty { body["region"] = region }
-        return try decode(try await send("/proxy/import", method: "POST", json: body))
-    }
-    func proxyDelete(id: Int) async throws -> MessageResponse {
-        try decode(try await send("/proxy/\(id)", method: "DELETE"))
-    }
-    func proxySelect(id: Int?) async throws -> ProxySelectResponse {
-        var body: [String: Any] = [:]
-        if let id { body["id"] = id }
-        return try decode(try await send("/proxy/select", method: "POST", json: body))
-    }
-    func proxyTest(id: Int) async throws -> ProxyTestResponse {
-        try decode(try await send("/proxy/test", method: "POST", json: ["id": id]))
-    }
-    func proxyVpsSpawn(count: Int) async throws -> ProxyVpsSpawnResponse {
-        try decode(try await send("/proxy/vps/spawn", method: "POST", json: ["count": count]))
-    }
-    func proxyVpsDespawn(port: Int) async throws -> MessageResponse {
-        try decode(try await send("/proxy/vps/despawn", method: "POST", json: ["port": port]))
-    }
 }
 

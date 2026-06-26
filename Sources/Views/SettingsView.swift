@@ -7,7 +7,6 @@ struct SettingsView: View {
     @State private var newPassword = ""
     @State private var message: String?
     @State private var connected: Bool?
-    @State private var keyProvider: Provider?
     @State private var showConnections = false
     @State private var showPayment = false
     @State private var cleanupDays = 30
@@ -63,17 +62,6 @@ struct SettingsView: View {
                     Button("Lưu thay đổi") { Task { await saveProfile() } }
                 }
 
-                // OTHER
-                Section("Vai trò AI (tùy chọn)") {
-                    TextField("VD: Bạn là trợ lý lập trình, trả lời ngắn gọn bằng tiếng Việt...",
-                              text: Binding(get: { store.systemPrompt },
-                                            set: { store.setSystemPrompt($0) }),
-                              axis: .vertical)
-                        .lineLimit(2...5)
-                    Text("Hướng dẫn này được gửi kèm mỗi lần chat để AI trả lời theo đúng phong cách/vai trò bạn muốn. Để trống nếu không cần.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-
                 Section("Khác") {
                     Picker("Ngôn ngữ", selection: Binding(
                         get: { store.language },
@@ -122,11 +110,9 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Cài đặt")
-            .sheet(item: $keyProvider) { p in KeyEntryView(provider: p) }
             .sheet(isPresented: $showConnections) { ConnectionsView() }
             .sheet(isPresented: $showPayment) { PaymentView() }
             .task {
-                await store.loadKeys()
                 await store.refreshCredits()
                 connected = (try? await store.api.getConfig()) != nil
             }
@@ -165,83 +151,5 @@ struct SettingsView: View {
             message = "Lỗi: \(error.localizedDescription)"
         }
         cleaning = false
-    }
-}
-
-struct KeyEntryView: View {
-    @EnvironmentObject var store: AppStore
-    @Environment(\.dismiss) var dismiss
-    let provider: Provider
-    @State private var key = ""
-    @State private var message: String?
-    @State private var isError = false
-    @State private var checking = false
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    HStack {
-                        Circle().fill(providerColor(provider.id)).frame(width: 10, height: 10)
-                        Text(provider.label).bold()
-                        if provider.free {
-                            Text("Free").font(.caption2).padding(.horizontal, 6).padding(.vertical, 2)
-                                .background(Color.green.opacity(0.2)).foregroundStyle(.green).clipShape(Capsule())
-                        }
-                    }
-                    SecureField("Dán API key tại đây", text: $key)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    Text("Model mặc định: \(provider.defaultModel)")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Section {
-                    Button {
-                        Task { await save() }
-                    } label: {
-                        HStack {
-                            if checking { ProgressView().padding(.trailing, 4) }
-                            Text(checking ? "Đang kiểm tra key..." : "Lưu & kiểm tra key")
-                        }
-                    }
-                    .disabled(key.isEmpty || checking)
-                    if store.configuredKeys.contains(provider.id) {
-                        Button("Xóa key", role: .destructive) { Task { await remove() } }
-                    }
-                }
-                if let message {
-                    Text(message).font(.footnote)
-                        .foregroundStyle(isError ? .red : .green)
-                }
-            }
-            .navigationTitle("Nhập API Key")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Đóng") { dismiss() } } }
-        }
-    }
-
-    private func save() async {
-        checking = true; message = nil
-        do {
-            _ = try await store.api.saveKey(provider: provider.id, apiKey: key)
-            do {
-                _ = try await store.api.testKey(provider: provider.id, apiKey: key)
-                isError = false; message = "Key hợp lệ, đã lưu ✓"
-                await store.loadKeys()
-                try? await Task.sleep(nanoseconds: 800_000_000)
-                dismiss()
-            } catch {
-                isError = true
-                message = "Key đã lưu nhưng KHÔNG dùng được: \(error.localizedDescription)"
-                await store.loadKeys()
-            }
-        } catch {
-            isError = true; message = error.localizedDescription
-        }
-        checking = false
-    }
-    private func remove() async {
-        do { _ = try await store.api.deleteKey(provider: provider.id)
-            await store.loadKeys(); dismiss()
-        } catch { message = error.localizedDescription }
     }
 }
