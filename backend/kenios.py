@@ -466,6 +466,19 @@ def init_db() -> None:
                 active INTEGER DEFAULT 0,
                 created_at INTEGER
             );
+            CREATE TABLE IF NOT EXISTS posts(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                file_id INTEGER NOT NULL,
+                caption TEXT,
+                likes INTEGER DEFAULT 0,
+                created_at INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS post_likes(
+                post_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                PRIMARY KEY(post_id, user_id)
+            );
         """)
     _migrate()
 
@@ -607,6 +620,11 @@ def _migrate() -> None:
         ("users", "plan",     "TEXT DEFAULT 'free'"),
         ("users", "credits",  "INTEGER DEFAULT 0"),
         ("users", "lang",     "TEXT DEFAULT 'vi'"),
+        ("users", "public_id",     "TEXT"),
+        ("users", "status",        "TEXT DEFAULT 'active'"),
+        ("users", "suspend_until", "INTEGER DEFAULT 0"),
+        ("users", "last_seen",     "INTEGER DEFAULT 0"),
+        ("users", "last_feature",  "TEXT"),
         ("files", "mime",     "TEXT"),
         ("conversations", "pinned", "INTEGER DEFAULT 0"),
         ("conversations", "share_token", "TEXT"),
@@ -676,7 +694,61 @@ def get_user(authorization: Optional[str] = Header(default=None)) -> sqlite3.Row
         raise HTTPException(status_code=401, detail="Tài khoản không tồn tại.")
     if row["banned"]:
         raise HTTPException(status_code=403, detail="Tài khoản đã bị khóa. Liên hệ quản trị viên.")
+    # Tạm ngưng có thời hạn (admin không bị ảnh hưởng)
+    if not row["is_admin"] and (row["status"] or "active") == "suspended":
+        su = row["suspend_until"] or 0
+        now = int(time.time())
+        if su and su <= now:
+            with db() as c:
+                c.execute("UPDATE users SET status='active', suspend_until=0 WHERE id=?", (row["id"],))
+        elif su:
+            t = time.strftime("%H:%M %d/%m", time.localtime(su))
+            raise HTTPException(status_code=403, detail=f"Tài khoản đang bị tạm ngưng đến {t}.")
+        else:
+            raise HTTPException(status_code=403, detail="Tài khoản đang bị tạm ngưng. Liên hệ quản trị viên.")
     return row
+
+
+def _gen_public_id(c) -> str:
+    import random
+    for _ in range(20):
+        pid = "KEN" + "".join(random.choices("0123456789", k=8))
+        if not c.execute("SELECT 1 FROM users WHERE public_id=?", (pid,)).fetchone():
+            return pid
+    return "KEN" + str(int(time.time()))[-8:]
+
+
+def _ensure_public_id(c, uid) -> str:
+    row = c.execute("SELECT public_id FROM users WHERE id=?", (uid,)).fetchone()
+    pid = row["public_id"] if row else None
+    if not pid:
+        pid = _gen_public_id(c)
+        c.execute("UPDATE users SET public_id=? WHERE id=?", (pid, uid))
+    return pid
+
+
+def _setting_get(key: str, default: str = "") -> str:
+    with db() as c:
+        r = c.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    return r["value"] if r else default
+
+
+def _setting_set(key: str, value: str) -> None:
+    with db() as c:
+        c.execute("INSERT INTO settings(key,value) VALUES(?,?) "
+                  "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
+
+
+def _user_dict(row) -> dict[str, Any]:
+    return {
+        "id": row["id"], "username": row["username"],
+        "email": row["email"], "phone": row["phone"],
+        "public_id": row["public_id"],
+        "is_admin": bool(row["is_admin"]),
+        "plan": "pro" if row["is_admin"] else (row["plan"] or "free"),
+        "credits": row["credits"], "lang": row["lang"] or "vi",
+        "status": row["status"] or "active",
+    }
 
 
 def get_admin(user=Depends(get_user)) -> sqlite3.Row:
@@ -1458,10 +1530,11 @@ def register(b: RegisterIn) -> dict[str, Any]:
             (b.username, b.email, b.phone, hash_pw(b.password), int(time.time())),
         )
         uid = cur.lastrowid
+        pid = _ensure_public_id(c, uid)
     return {"token": make_token(uid),
             "user": {"id": uid, "username": b.username, "email": b.email,
-                     "phone": b.phone, "is_admin": False, "plan": "free",
-                     "credits": 0, "lang": "vi"}}
+                     "phone": b.phone, "public_id": pid, "is_admin": False,
+                     "plan": "free", "credits": 0, "lang": "vi", "status": "active"}}
 
 
 @app.post("/auth/login")
@@ -1472,11 +1545,10 @@ def login(b: LoginIn) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Sai username hoặc mật khẩu.")
     if row["banned"]:
         raise HTTPException(status_code=403, detail="Tài khoản đã bị khóa. Liên hệ quản trị viên.")
-    return {"token": make_token(row["id"]),
-            "user": {"id": row["id"], "username": row["username"],
-                     "email": row["email"], "phone": row["phone"],
-                     "is_admin": bool(row["is_admin"]), "plan": row["plan"],
-                     "credits": row["credits"], "lang": row["lang"] or "vi"}}
+    with db() as c:
+        _ensure_public_id(c, row["id"])
+        row = c.execute("SELECT * FROM users WHERE id=?", (row["id"],)).fetchone()
+    return {"token": make_token(row["id"]), "user": _user_dict(row)}
 
 
 @app.post("/auth/forgot-password")
@@ -3760,15 +3832,20 @@ def remove_favorite(fid: int, user=Depends(get_user)) -> dict[str, Any]:
 # ======================== Friends & Direct Messaging ========================
 @app.get("/users/search")
 def search_users(q: str, user=Depends(get_user)) -> list[dict[str, Any]]:
+    """Tìm theo username, SĐT hoặc ID công khai (KEN...)."""
     if not q or len(q.strip()) < 1:
         return []
-    keyword = f"%{q.strip()}%"
+    term = q.strip()
+    kw = f"%{term}%"
     with db() as c:
         rows = c.execute(
-            "SELECT id, username FROM users WHERE username LIKE ? AND id != ?",
-            (keyword, user["id"])
+            "SELECT id, username, public_id, phone FROM users "
+            "WHERE (username LIKE ? OR phone LIKE ? OR public_id LIKE ? "
+            "       OR public_id = ? OR phone = ?) AND id != ?",
+            (kw, kw, kw, term.upper(), term, user["id"])
         ).fetchall()
-    return [dict(r) for r in rows]
+    return [{"id": r["id"], "username": r["username"],
+             "public_id": r["public_id"], "phone": r["phone"]} for r in rows]
 
 
 @app.post("/friends/request")
@@ -3931,10 +4008,18 @@ class PlanIn(BaseModel):   plan: str
 def admin_users(admin=Depends(get_admin)) -> list[dict[str, Any]]:
     with db() as c:
         rows = c.execute(
-            "SELECT id,username,email,phone,is_admin,banned,plan,credits,created_at "
+            "SELECT id,username,email,phone,public_id,is_admin,banned,plan,credits,"
+            "status,suspend_until,last_seen,last_feature,created_at "
             "FROM users ORDER BY id"
         ).fetchall()
-    return [dict(r) for r in rows]
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["is_admin"] = bool(r["is_admin"])
+        d["plan"] = "pro" if r["is_admin"] else (r["plan"] or "free")
+        d["status"] = r["status"] or "active"
+        out.append(d)
+    return out
 
 
 @app.post("/admin/users/{uid}/ban")
@@ -3958,11 +4043,168 @@ def admin_set_pw(uid: int, b: AdminPwIn, admin=Depends(get_admin)) -> dict[str, 
 
 @app.post("/admin/users/{uid}/plan")
 def admin_set_plan(uid: int, b: PlanIn, admin=Depends(get_admin)) -> dict[str, Any]:
-    if b.plan not in ("free", "pro", "ultra", "max"):
-        raise HTTPException(status_code=400, detail="Gói không hợp lệ. Chọn: free, pro, ultra, max.")
+    # Chỉ còn 2 gói: free / pro
+    plan = "pro" if b.plan == "pro" else "free"
     with db() as c:
-        c.execute("UPDATE users SET plan=? WHERE id=?", (b.plan, uid))
-    return {"message": f"Đã đặt gói '{b.plan}'."}
+        c.execute("UPDATE users SET plan=? WHERE id=?", (plan, uid))
+    return {"message": f"Đã đặt gói '{plan}'."}
+
+
+class SuspendIn(BaseModel):
+    minutes: int = 0   # 0 = ngưng vô thời hạn; >0 = ngưng theo phút
+
+
+@app.post("/admin/users/{uid}/suspend")
+def admin_suspend(uid: int, b: SuspendIn, admin=Depends(get_admin)) -> dict[str, Any]:
+    if uid == admin["id"]:
+        raise HTTPException(status_code=400, detail="Không thể tự ngưng chính mình.")
+    until = int(time.time()) + b.minutes * 60 if b.minutes > 0 else 0
+    with db() as c:
+        c.execute("UPDATE users SET status='suspended', suspend_until=? WHERE id=?", (until, uid))
+    return {"message": "Đã tạm ngưng tài khoản."}
+
+
+@app.post("/admin/users/{uid}/unsuspend")
+def admin_unsuspend(uid: int, admin=Depends(get_admin)) -> dict[str, Any]:
+    with db() as c:
+        c.execute("UPDATE users SET status='active', suspend_until=0 WHERE id=?", (uid,))
+    return {"message": "Đã mở lại tài khoản."}
+
+
+# ---- Người dùng: lấy hồ sơ mới nhất + nhịp hoạt động ----
+@app.get("/me")
+def get_me(user=Depends(get_user)) -> dict[str, Any]:
+    return _user_dict(user)
+
+
+class ActivityIn(BaseModel):
+    feature: str = ""
+
+
+@app.post("/me/activity")
+def me_activity(b: ActivityIn, user=Depends(get_user)) -> dict[str, Any]:
+    with db() as c:
+        c.execute("UPDATE users SET last_seen=?, last_feature=? WHERE id=?",
+                  (int(time.time()), (b.feature or "")[:60], user["id"]))
+    return {"ok": True}
+
+
+# ---- Chế độ bảo trì (admin bật → người dùng bị khoá tạm) ----
+class MaintenanceIn(BaseModel):
+    on: bool = False
+    message: str = "Ứng dụng đang nâng cấp phiên bản. Vui lòng đợi trong giây lát."
+
+
+@app.get("/app/status")
+def app_status() -> dict[str, Any]:
+    on = _setting_get("maintenance_on", "0") == "1"
+    return {
+        "maintenance": on,
+        "message": _setting_get("maintenance_msg",
+                                "Ứng dụng đang nâng cấp phiên bản. Vui lòng đợi trong giây lát."),
+        "version": "5.0",
+    }
+
+
+@app.post("/admin/maintenance")
+def admin_maintenance(b: MaintenanceIn, admin=Depends(get_admin)) -> dict[str, Any]:
+    _setting_set("maintenance_on", "1" if b.on else "0")
+    if b.message:
+        _setting_set("maintenance_msg", b.message)
+    return {"message": "Đã bật bảo trì." if b.on else "Đã tắt bảo trì.", "maintenance": b.on}
+
+
+# ======================== Video feed (TikTok của riêng app) ========================
+class PostIn(BaseModel):
+    file_id: int
+    caption: str = ""
+
+
+@app.post("/posts")
+def create_post(b: PostIn, user=Depends(get_user)) -> dict[str, Any]:
+    with db() as c:
+        f = c.execute("SELECT id FROM files WHERE id=? AND user_id=?",
+                      (b.file_id, user["id"])).fetchone()
+        if not f:
+            raise HTTPException(status_code=404, detail="Không tìm thấy video của bạn để đăng.")
+        cur = c.execute(
+            "INSERT INTO posts(user_id,file_id,caption,likes,created_at) VALUES(?,?,?,0,?)",
+            (user["id"], b.file_id, (b.caption or "")[:300], int(time.time())))
+        pid = cur.lastrowid
+    return {"id": pid, "message": "Đã đăng video."}
+
+
+@app.get("/feed")
+def feed(user=Depends(get_user)) -> list[dict[str, Any]]:
+    with db() as c:
+        rows = c.execute(
+            "SELECT p.id, p.caption, p.likes, p.created_at, p.file_id, "
+            "u.username, u.public_id, f.name, f.mime "
+            "FROM posts p JOIN users u ON p.user_id=u.id "
+            "JOIN files f ON p.file_id=f.id "
+            "ORDER BY p.id DESC LIMIT 100"
+        ).fetchall()
+        liked = {r["post_id"] for r in c.execute(
+            "SELECT post_id FROM post_likes WHERE user_id=?", (user["id"],)).fetchall()}
+    return [{
+        "id": r["id"], "caption": r["caption"], "likes": r["likes"],
+        "created_at": r["created_at"], "file_id": r["file_id"],
+        "username": r["username"], "public_id": r["public_id"],
+        "name": r["name"], "mime": r["mime"],
+        "liked": r["id"] in liked,
+    } for r in rows]
+
+
+@app.get("/posts/{pid}/video")
+def post_video(pid: int, background_tasks: BackgroundTasks, user=Depends(get_user)):
+    with db() as c:
+        row = c.execute(
+            "SELECT f.name,f.mime,f.data,f.id as fid FROM posts p "
+            "JOIN files f ON p.file_id=f.id WHERE p.id=?", (pid,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Không tìm thấy video.")
+    file_path = os.path.join(UPLOAD_DIR, str(row["fid"]))
+    if os.path.exists(file_path):
+        return FileResponse(path=file_path, filename=row["name"],
+                            media_type=row["mime"] or "video/mp4")
+    if row["data"]:
+        temp_path = os.path.join(UPLOAD_DIR, f"feed_{pid}_{secrets.token_hex(4)}")
+        with open(temp_path, "wb") as f:
+            f.write(base64.b64decode(row["data"]))
+        background_tasks.add_task(os.unlink, temp_path)
+        return FileResponse(path=temp_path, filename=row["name"],
+                            media_type=row["mime"] or "video/mp4")
+    raise HTTPException(status_code=404, detail="Không có nội dung video.")
+
+
+@app.post("/posts/{pid}/like")
+def like_post(pid: int, user=Depends(get_user)) -> dict[str, Any]:
+    with db() as c:
+        ex = c.execute("SELECT 1 FROM post_likes WHERE post_id=? AND user_id=?",
+                       (pid, user["id"])).fetchone()
+        if ex:
+            c.execute("DELETE FROM post_likes WHERE post_id=? AND user_id=?", (pid, user["id"]))
+            c.execute("UPDATE posts SET likes=MAX(0,likes-1) WHERE id=?", (pid,))
+            liked = False
+        else:
+            c.execute("INSERT INTO post_likes(post_id,user_id) VALUES(?,?)", (pid, user["id"]))
+            c.execute("UPDATE posts SET likes=likes+1 WHERE id=?", (pid,))
+            liked = True
+        likes = c.execute("SELECT likes FROM posts WHERE id=?", (pid,)).fetchone()
+    return {"liked": liked, "likes": likes["likes"] if likes else 0}
+
+
+@app.delete("/posts/{pid}")
+def delete_post(pid: int, user=Depends(get_user)) -> dict[str, Any]:
+    with db() as c:
+        row = c.execute("SELECT user_id FROM posts WHERE id=?", (pid,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Không tìm thấy bài.")
+        if row["user_id"] != user["id"] and not user["is_admin"]:
+            raise HTTPException(status_code=403, detail="Không thể xoá bài của người khác.")
+        c.execute("DELETE FROM posts WHERE id=?", (pid,))
+        c.execute("DELETE FROM post_likes WHERE post_id=?", (pid,))
+    return {"message": "Đã xoá bài."}
 
 
 @app.post("/admin/payments/{pid}/confirm")
