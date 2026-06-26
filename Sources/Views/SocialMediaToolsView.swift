@@ -68,11 +68,13 @@ struct SocialMediaToolsView: View {
                 .padding()
 
                 if selectedSegment == 0 {
-                    VideoEditorView()
+                    if store.isPro { VideoEditorView() }
+                    else { ProLockCard(feature: "Sửa video") }
                 } else if selectedSegment == 1 {
                     downloaderPane
                 } else {
-                    liveToolsPane
+                    if store.isPro { liveToolsPane }
+                    else { ProLockCard(feature: "Live Tools / Stream key") }
                 }
             }
             .navigationTitle("Mạng xã hội")

@@ -107,6 +107,7 @@ struct GHContent: Decodable, Identifiable {
 }
 
 struct GitHubView: View {
+    @EnvironmentObject var store: AppStore
     @AppStorage("github_token") private var token = ""
     @State private var user: GHUser?
     @State private var repos: [GHRepo] = []
@@ -125,7 +126,9 @@ struct GitHubView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if user == nil {
+                if !store.isPro {
+                    ProLockCard(feature: "Liên kết GitHub")
+                } else if user == nil {
                     loginView
                 } else {
                     repoListView

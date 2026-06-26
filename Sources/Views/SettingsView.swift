@@ -44,10 +44,17 @@ struct SettingsView: View {
                 Section("Tài khoản") {
                     LabeledContent("Tên đăng nhập", value: store.username ?? "-")
                     HStack {
+                        Text("ID của bạn")
+                        Spacer()
+                        Text(store.publicId.isEmpty ? "—" : store.publicId)
+                            .foregroundStyle(Theme.accent)
+                            .textSelection(.enabled)
+                    }
+                    HStack {
                         Text("Gói")
                         Spacer()
-                        Text(store.plan == "pro" ? "PRO" : "Free")
-                            .foregroundStyle(store.plan == "pro" ? .green : .secondary)
+                        Text(store.isPro ? "PRO" : "Free")
+                            .foregroundStyle(store.isPro ? .green : .secondary)
                     }
                     HStack {
                         Text("Credits")

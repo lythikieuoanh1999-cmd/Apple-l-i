@@ -134,35 +134,12 @@ struct RegisterView: View {
                 TextField("Username * (≥3 ký tự)", text: $username)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                 SecureField("Mật khẩu * (≥6 ký tự)", text: $password)
-                TextField("Email (để nhận mã xác nhận)", text: $email)
+                TextField("Gmail (tuỳ chọn)", text: $email)
                     .textInputAutocapitalization(.never).keyboardType(.emailAddress)
                     .autocorrectionDisabled()
                 TextField("Số điện thoại (tuỳ chọn)", text: $phone).keyboardType(.phonePad)
-            }
-
-            // Xác nhận email bằng mã (OTP) — KHÔNG bắt buộc, chỉ dùng nếu muốn
-            if emailValid {
-                Section("Xác nhận email (tuỳ chọn)") {
-                    Button {
-                        Task { await sendCode() }
-                    } label: {
-                        HStack {
-                            if sendingCode { ProgressView().padding(.trailing, 6) }
-                            Text(codeSent ? "Gửi lại mã" : "Gửi mã xác nhận")
-                        }
-                    }.disabled(sendingCode)
-
-                    if codeSent {
-                        TextField("Nhập mã 6 số", text: $code)
-                            .keyboardType(.numberPad)
-                            .textContentType(.oneTimeCode)
-                    }
-                    if let otpInfo {
-                        Text(otpInfo).font(.caption).foregroundStyle(.secondary)
-                    }
-                    Text("Bạn có thể tạo tài khoản ngay mà không cần xác nhận mã.")
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
+                Text("Chỉ cần SĐT hoặc Gmail là được — không cần mã xác nhận.")
+                    .font(.caption2).foregroundStyle(.secondary)
             }
 
             if let error { Text(error).foregroundStyle(.red).font(.footnote) }
