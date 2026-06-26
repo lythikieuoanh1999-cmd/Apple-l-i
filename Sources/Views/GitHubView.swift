@@ -96,6 +96,22 @@ final class GitHubAPI {
             "message": message, "branch": branch, "sha": sha])
         _ = try await request("/repos/\(fullName)/contents/\(path)", method: "DELETE", body: body)
     }
+
+    // ---- Build app qua GitHub Actions ----
+    func triggerBuild(fullName: String, workflow: String, ref: String) async throws {
+        let body = try JSONSerialization.data(withJSONObject: ["ref": ref])
+        _ = try await request("/repos/\(fullName)/actions/workflows/\(workflow)/dispatches",
+                              method: "POST", body: body)
+    }
+    func listRuns(fullName: String) async throws -> [GHRun] {
+        struct Wrap: Decodable { let workflow_runs: [GHRun] }
+        let data = try await request("/repos/\(fullName)/actions/runs?per_page=8")
+        return try JSONDecoder().decode(Wrap.self, from: data).workflow_runs
+    }
+    func latestRelease(fullName: String) async -> GHRelease? {
+        guard let data = try? await request("/repos/\(fullName)/releases/latest") else { return nil }
+        return try? JSONDecoder().decode(GHRelease.self, from: data)
+    }
 }
 
 struct GHContent: Decodable, Identifiable {
@@ -104,6 +120,24 @@ struct GHContent: Decodable, Identifiable {
     let path: String
     let type: String   // file | dir
     let sha: String
+}
+
+struct GHRun: Decodable, Identifiable {
+    let id: Int
+    let status: String?       // queued | in_progress | completed
+    let conclusion: String?   // success | failure | cancelled...
+    let html_url: String?
+    let run_number: Int?
+}
+struct GHReleaseAsset: Decodable, Identifiable {
+    var id: String { name }
+    let name: String
+    let browser_download_url: String
+}
+struct GHRelease: Decodable {
+    let tag_name: String?
+    let html_url: String?
+    let assets: [GHReleaseAsset]
 }
 
 struct GitHubView: View {
@@ -323,6 +357,13 @@ struct GitHubRepoView: View {
     @State private var contents: [GHContent] = []
     @State private var loadingList = false
 
+    // Build app (Actions)
+    @State private var runs: [GHRun] = []
+    @State private var building = false
+    @State private var buildMsg: String?
+    @State private var ipaURL: String?
+    @State private var releasePage: String?
+
     private var branch: String { repo.default_branch ?? "main" }
 
     var body: some View {
@@ -386,6 +427,48 @@ struct GitHubRepoView: View {
             } header: { Text("File trong repo") }
             footer: { Text("Bấm thùng rác để xoá file khỏi repo (commit xoá luôn trên GitHub).") }
 
+            // ====== Build app IPA qua GitHub Actions ======
+            Section {
+                Button {
+                    Task { await build() }
+                } label: {
+                    HStack {
+                        if building { ProgressView().padding(.trailing, 4) }
+                        Label(building ? "Đang gửi lệnh build..." : "Build app IPA (chạy trên GitHub)",
+                              systemImage: "hammer.fill")
+                    }
+                }.disabled(building)
+
+                Button { Task { await loadRuns() } } label: {
+                    Label("Làm mới trạng thái build", systemImage: "arrow.clockwise")
+                }
+                ForEach(runs) { r in
+                    HStack {
+                        Image(systemName: runIcon(r)).foregroundStyle(runColor(r))
+                        Text("Run #\(r.run_number ?? r.id)").font(.caption)
+                        Spacer()
+                        Text(runText(r)).font(.caption2).foregroundStyle(.secondary)
+                        if let u = r.html_url, let url = URL(string: u) {
+                            Link(destination: url) { Image(systemName: "arrow.up.right.square") }
+                        }
+                    }
+                }
+                if let ipaURL, let url = URL(string: ipaURL) {
+                    Link(destination: url) {
+                        Label("Tải IPA mới nhất", systemImage: "square.and.arrow.down")
+                            .foregroundStyle(.green)
+                    }
+                } else if let releasePage, let url = URL(string: releasePage) {
+                    Link(destination: url) {
+                        Label("Mở bản phát hành (Releases)", systemImage: "shippingbox")
+                    }
+                }
+                if let buildMsg { Text(buildMsg).font(.caption).foregroundStyle(.secondary) }
+            } header: { Text("Build app (GitHub Actions)") }
+            footer: {
+                Text("Build chạy trên máy chủ của GitHub (không phải điện thoại). Cần repo có file .github/workflows/build-app.yml và token quyền 'workflow'. Xong vào Releases tải KENIOS.ipa.")
+            }
+
             Section {
                 if let urlStr = repo.html_url, let url = URL(string: urlStr) {
                     Link(destination: url) {
@@ -396,10 +479,46 @@ struct GitHubRepoView: View {
         }
         .navigationTitle(repo.name)
         .navigationBarTitleDisplayMode(.inline)
+        .task { await loadRuns(); await loadRelease() }
         .fileImporter(isPresented: $showImporter,
                       allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             if case .success(let urls) = result { Task { await upload(urls) } }
         }
+    }
+
+    private func build() async {
+        building = true; buildMsg = nil
+        do {
+            try await api.triggerBuild(fullName: repo.full_name, workflow: "build-app.yml", ref: branch)
+            buildMsg = "Đã gửi lệnh build. Đợi vài phút rồi bấm 'Làm mới trạng thái'."
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            await loadRuns()
+        } catch {
+            buildMsg = "Không gửi được lệnh build: \(error.localizedDescription)"
+        }
+        building = false
+    }
+    private func loadRuns() async {
+        if let rs = try? await api.listRuns(fullName: repo.full_name) { runs = rs }
+        await loadRelease()
+    }
+    private func loadRelease() async {
+        if let rel = await api.latestRelease(fullName: repo.full_name) {
+            releasePage = rel.html_url
+            ipaURL = rel.assets.first(where: { $0.name.lowercased().hasSuffix(".ipa") })?.browser_download_url
+        }
+    }
+    private func runIcon(_ r: GHRun) -> String {
+        if r.status != "completed" { return "clock" }
+        return r.conclusion == "success" ? "checkmark.circle.fill" : "xmark.circle.fill"
+    }
+    private func runColor(_ r: GHRun) -> Color {
+        if r.status != "completed" { return .orange }
+        return r.conclusion == "success" ? .green : .red
+    }
+    private func runText(_ r: GHRun) -> String {
+        if r.status != "completed" { return r.status == "in_progress" ? "đang chạy" : "đang chờ" }
+        return r.conclusion == "success" ? "thành công" : (r.conclusion ?? "lỗi")
     }
 
     private func loadList() async {

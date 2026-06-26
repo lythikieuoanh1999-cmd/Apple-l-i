@@ -16,6 +16,9 @@ concurrency:
   group: build-app-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write   # cần để tạo Release đính kèm IPA
+
 jobs:
   build:
     runs-on: macos-15
@@ -82,3 +85,14 @@ jobs:
           name: KENIOS-ipa
           path: KENIOS.ipa
           if-no-files-found: error
+
+      # Phát hành Release để app tải IPA trực tiếp qua link
+      - name: Publish Release with IPA
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: KENIOS build ${{ github.run_number }}
+          files: KENIOS.ipa
+          body: "Bản build tự động KENIOS (IPA chưa ký). Tải KENIOS.ipa để sideload."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
