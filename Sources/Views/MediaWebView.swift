@@ -130,7 +130,6 @@ struct MediaWebView: View {
     private let home = "https://m.youtube.com"
     private let shortcuts: [(String, String, String)] = [
         ("YouTube",  "play.tv.fill",          "https://m.youtube.com"),
-        ("Game",     "gamecontroller.fill",   "https://www.crazygames.com"),
         ("Âm nhạc",  "music.note",            "https://soundcloud.com/discover"),
         ("Spotify",  "music.note.list",       "https://open.spotify.com"),
         ("Phim",     "film.fill",             "https://www.youtube.com/results?search_query=phim+hay"),

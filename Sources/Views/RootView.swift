@@ -36,9 +36,15 @@ struct MainTabView: View {
             MediaWebView() // xem phim · nghe nhạc qua web
                 .tabItem { Label("Giải trí", systemImage: "play.tv.fill") }
                 .tag(8)
+            GameZoneView() // khu trò chơi riêng
+                .tabItem { Label("Trò chơi", systemImage: "gamecontroller.fill") }
+                .tag(12)
             CreatorToolsView() // bộ công cụ tiện ích cho nội dung
                 .tabItem { Label("Công cụ", systemImage: "square.grid.2x2.fill") }
                 .tag(11)
+            GitHubView() // đăng nhập GitHub · tải file lên repo
+                .tabItem { Label("GitHub", systemImage: "chevron.left.forwardslash.chevron.right") }
+                .tag(13)
             SettingsView()
                 .tabItem { Label("Cài đặt", systemImage: "gearshape.fill") }
                 .tag(5)
