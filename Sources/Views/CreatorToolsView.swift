@@ -14,7 +14,7 @@ struct CreatorToolsView: View {
                         .listRowBackground(Color.clear)
                 }
                 Section("Ảnh & Video") {
-                    navLink("Công cụ ảnh (tách nền · nén · làm nét)", "wand.and.stars", ImageToolsView())
+                    navLink("Công cụ ảnh (tách nền · cải thiện · nén · nhiều ảnh)", "wand.and.stars", ImageToolsView())
                     navLink("Watermark chữ lên ảnh", "signature", WatermarkView())
                     navLink("Đổi đuôi ảnh (PNG ⇄ JPG)", "arrow.left.arrow.right.square", ImageConvertView())
                     navLink("Trích nhạc từ video (M4A)", "music.note", AudioExtractView())
