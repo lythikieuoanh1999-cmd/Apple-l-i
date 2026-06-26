@@ -24,16 +24,6 @@ struct SocialMediaToolsView: View {
     @State private var ltKey = ""
     @State private var ltLink = ""
     
-    // AI Generator States
-    @State private var topic = ""
-    @State private var platform = "tiktok"
-    @State private var tone = "funny"
-    @State private var mode = "script"
-    @State private var provider = "openai"
-    @State private var generating = false
-    @State private var resultText = ""
-    @State private var generatorError: String?
-    
     // Downloader States
     @State private var videoURL = ""
     @State private var videoQuality = "1080"
@@ -70,15 +60,15 @@ struct SocialMediaToolsView: View {
 
                 // Segmented picker
                 Picker("", selection: $selectedSegment) {
-                    Text("Sáng tạo").tag(0)
+                    Text("Sửa Video").tag(0)
                     Text("Tải Video").tag(1)
                     Text("Live Tools").tag(2)
                 }
                 .pickerStyle(.segmented)
                 .padding()
-                
+
                 if selectedSegment == 0 {
-                    generatorPane
+                    VideoEditorView()
                 } else if selectedSegment == 1 {
                     downloaderPane
                 } else {
@@ -99,137 +89,9 @@ struct SocialMediaToolsView: View {
                     saveCookieToLibrary(cookies: cookies, siteName: browserSiteName)
                 }
             }
-            .onAppear {
-                setDefaultProvider()
-            }
         }
     }
-    
-    // MARK: - AI Generator Pane
-    private var generatorPane: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                // Subject Input
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Chủ đề viết bài / kịch bản").font(.subheadline).bold()
-                    TextField("Ví dụ: Hướng dẫn code Python cơ bản, 3 mẹo tăng follow...", text: $topic, axis: .vertical)
-                        .lineLimit(2...4)
-                        .padding(12)
-                        .kGlass(RoundedRectangle(cornerRadius: 12))
-                }
-                
-                // Form selections
-                VStack(spacing: 12) {
-                    HStack {
-                        Text("Nền tảng")
-                        Spacer()
-                        Picker("Nền tảng", selection: $platform) {
-                            Text("TikTok").tag("tiktok")
-                            Text("Facebook").tag("facebook")
-                            Text("Instagram").tag("instagram")
-                        }
-                        .pickerStyle(.menu)
-                    }
-                    Divider()
-                    
-                    HStack {
-                        Text("Giọng điệu")
-                        Spacer()
-                        Picker("Giọng điệu", selection: $tone) {
-                            Text("Hài hước 🎭").tag("funny")
-                            Text("Chuyên nghiệp 💼").tag("professional")
-                            Text("Giật gân 🔥").tag("sensational")
-                            Text("Thân thiện 🌱").tag("friendly")
-                        }
-                        .pickerStyle(.menu)
-                    }
-                    Divider()
-                    
-                    HStack {
-                        Text("Định dạng")
-                        Spacer()
-                        Picker("Định dạng", selection: $mode) {
-                            Text("Bài viết (Post)").tag("post")
-                            Text("Kịch bản video").tag("script")
-                        }
-                        .pickerStyle(.menu)
-                    }
-                    Divider()
-                    
-                    HStack {
-                        Text("Nhà cung cấp AI")
-                        Spacer()
-                        Picker("AI", selection: $provider) {
-                            ForEach(store.providers.filter { !$0.id.contains("dall") }) { prov in
-                                Text(prov.label).tag(prov.id)
-                            }
-                            if store.providers.isEmpty {
-                                Text("OpenAI").tag("openai")
-                            }
-                        }
-                        .pickerStyle(.menu)
-                    }
-                }
-                .padding(14)
-                .kCard(16)
-                
-                // Submit Button
-                Button {
-                    Task { await runGenerate() }
-                } label: {
-                    HStack {
-                        if generating {
-                            ProgressView().tint(.white)
-                            Text("Đang sáng tạo...")
-                        } else {
-                            Image(systemName: "sparkles")
-                            Text("Bắt đầu viết bài")
-                        }
-                    }
-                    .font(.headline).bold().foregroundStyle(.white)
-                    .frame(maxWidth: .infinity).frame(height: 50)
-                    .background(generating || topic.trimmingCharacters(in: .whitespaces).isEmpty ? Color.gray : Theme.accent)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                .disabled(generating || topic.trimmingCharacters(in: .whitespaces).isEmpty)
-                
-                // Output Result
-                if !resultText.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("Kết quả sáng tạo").font(.headline)
-                            Spacer()
-                            Button {
-                                UIPasteboard.general.string = resultText
-                            } label: {
-                                Label("Sao chép", systemImage: "doc.on.doc")
-                                    .font(.caption)
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                        
-                        ScrollView {
-                            Text(resultText)
-                                .font(.body)
-                                .padding()
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color(.secondarySystemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .textSelection(.enabled)
-                        }
-                        .frame(maxHeight: 300)
-                    }
-                    .padding(.top, 10)
-                }
-                
-                if let err = generatorError {
-                    Text(err).foregroundStyle(.red).font(.caption)
-                }
-            }
-            .padding()
-        }
-    }
-    
+
     // MARK: - Downloader Pane
     private var downloaderPane: some View {
         ScrollView {
@@ -622,33 +484,6 @@ struct SocialMediaToolsView: View {
     }
     
     // MARK: - Helpers
-    private func setDefaultProvider() {
-        if provider.isEmpty {
-            provider = store.configuredKeys.first
-                ?? store.providers.first(where: { $0.free })?.id
-                ?? store.providers.first?.id ?? "openai"
-        }
-    }
-    
-    private func runGenerate() async {
-        generating = true
-        resultText = ""
-        generatorError = nil
-        do {
-            let res = try await store.api.socialGenerate(
-                topic: topic,
-                platform: platform,
-                tone: tone,
-                mode: mode,
-                provider: provider
-            )
-            resultText = res.content
-        } catch {
-            generatorError = error.localizedDescription
-        }
-        generating = false
-    }
-    
     private func runDownload() async {
         downloading = true
         downloadedFileId = nil
