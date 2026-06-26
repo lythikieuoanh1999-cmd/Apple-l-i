@@ -237,3 +237,71 @@ struct AudioExtractView: View {
         exporting = false
     }
 }
+
+// ======================== Internet · Tin tức · Mạng xã hội (mở trong app) ========================
+private struct NewsLink: Identifiable { let id = UUID(); let name: String; let icon: String; let url: String }
+private struct OpenURL: Identifiable { let url: String; var id: String { url } }
+
+struct NewsToolsView: View {
+    @State private var open: OpenURL?
+    private let cols = [GridItem(.adaptive(minimum: 104), spacing: 14)]
+
+    private let groups: [(String, [NewsLink])] = [
+        ("Tin tức · Thời sự", [
+            NewsLink(name: "VnExpress",   icon: "newspaper.fill",        url: "https://vnexpress.net"),
+            NewsLink(name: "Tuổi Trẻ",    icon: "newspaper",             url: "https://tuoitre.vn"),
+            NewsLink(name: "Thanh Niên",  icon: "newspaper",             url: "https://thanhnien.vn"),
+            NewsLink(name: "Dân Trí",     icon: "newspaper",             url: "https://dantri.com.vn"),
+            NewsLink(name: "VietnamNet",  icon: "newspaper",             url: "https://vietnamnet.vn"),
+            NewsLink(name: "Báo Mới",     icon: "square.stack.3d.up",    url: "https://baomoi.com"),
+            NewsLink(name: "Google News", icon: "globe",                 url: "https://news.google.com"),
+            NewsLink(name: "24h",         icon: "clock.fill",            url: "https://www.24h.com.vn"),
+        ]),
+        ("Mạng xã hội (web)", [
+            NewsLink(name: "Facebook",  icon: "person.2.fill",     url: "https://m.facebook.com"),
+            NewsLink(name: "TikTok",    icon: "play.rectangle.fill", url: "https://www.tiktok.com"),
+            NewsLink(name: "Instagram", icon: "camera.fill",       url: "https://www.instagram.com"),
+            NewsLink(name: "Threads",   icon: "at",                url: "https://www.threads.net"),
+            NewsLink(name: "X",         icon: "xmark",             url: "https://twitter.com"),
+            NewsLink(name: "Reddit",    icon: "bubble.left.and.bubble.right.fill", url: "https://www.reddit.com"),
+        ]),
+        ("Tiện ích Internet", [
+            NewsLink(name: "Thời tiết", icon: "cloud.sun.fill",     url: "https://www.accuweather.com/vi/vn/vietnam-weather"),
+            NewsLink(name: "Tỷ giá",    icon: "dollarsign.circle.fill", url: "https://www.google.com/search?q=t%E1%BB%B7+gi%C3%A1+ngo%E1%BA%A1i+t%E1%BB%87"),
+            NewsLink(name: "Dịch",      icon: "character.book.closed.fill", url: "https://translate.google.com"),
+            NewsLink(name: "Bản đồ",    icon: "map.fill",           url: "https://www.google.com/maps"),
+            NewsLink(name: "Xu hướng",  icon: "chart.line.uptrend.xyaxis", url: "https://trends.google.com.vn/trends/trendingsearches/daily?geo=VN"),
+            NewsLink(name: "Tìm kiếm",  icon: "magnifyingglass",    url: "https://www.google.com"),
+        ]),
+    ]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                ForEach(groups, id: \.0) { group in
+                    Text(group.0).font(.headline)
+                    LazyVGrid(columns: cols, spacing: 14) {
+                        ForEach(group.1) { s in
+                            Button { open = OpenURL(url: s.url) } label: {
+                                VStack(spacing: 8) {
+                                    Image(systemName: s.icon)
+                                        .font(.system(size: 24, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                        .frame(width: 52, height: 52)
+                                        .background(Theme.heroGradient)
+                                        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                                    Text(s.name).font(.caption).foregroundStyle(.primary)
+                                        .lineLimit(1).minimumScaleFactor(0.7)
+                                }
+                                .frame(maxWidth: .infinity).padding(.vertical, 10).kCard(16)
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                }
+            }.padding()
+        }
+        .navigationTitle("Internet & Tin tức")
+        .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(item: $open) { item in GamePlayerView(url: item.url) }
+    }
+}

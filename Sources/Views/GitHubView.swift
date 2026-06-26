@@ -82,6 +82,28 @@ final class GitHubAPI {
         let body = try JSONSerialization.data(withJSONObject: obj)
         _ = try await request("/repos/\(fullName)/contents/\(path)", method: "PUT", body: body)
     }
+    // Liệt kê file trong 1 thư mục của repo
+    func listContents(fullName: String, path: String, branch: String) async throws -> [GHContent] {
+        let p = path.isEmpty
+            ? "/repos/\(fullName)/contents?ref=\(branch)"
+            : "/repos/\(fullName)/contents/\(path)?ref=\(branch)"
+        return try JSONDecoder().decode([GHContent].self, from: request(p))
+    }
+    // Xoá 1 file khỏi repo
+    func deleteFile(fullName: String, path: String, message: String,
+                    branch: String, sha: String) async throws {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "message": message, "branch": branch, "sha": sha])
+        _ = try await request("/repos/\(fullName)/contents/\(path)", method: "DELETE", body: body)
+    }
+}
+
+struct GHContent: Decodable, Identifiable {
+    var id: String { path }
+    let name: String
+    let path: String
+    let type: String   // file | dir
+    let sha: String
 }
 
 struct GitHubView: View {
@@ -294,6 +316,10 @@ struct GitHubRepoView: View {
     @State private var log: [String] = []
     @State private var error: String?
 
+    // Duyệt & xoá file
+    @State private var contents: [GHContent] = []
+    @State private var loadingList = false
+
     private var branch: String { repo.default_branch ?? "main" }
 
     var body: some View {
@@ -329,6 +355,34 @@ struct GitHubRepoView: View {
             }
             if let error { Text(error).foregroundStyle(.red).font(.caption) }
 
+            // Duyệt & xoá file trong thư mục hiện tại
+            Section {
+                Button {
+                    Task { await loadList() }
+                } label: {
+                    HStack {
+                        if loadingList { ProgressView().padding(.trailing, 4) }
+                        Label("Xem file trong thư mục này", systemImage: "folder")
+                    }
+                }.disabled(loadingList)
+
+                ForEach(contents) { item in
+                    HStack {
+                        Image(systemName: item.type == "dir" ? "folder.fill" : "doc.fill")
+                            .foregroundStyle(item.type == "dir" ? Theme.gold : Theme.accent)
+                        Text(item.name).lineLimit(1)
+                        Spacer()
+                        if item.type == "file" {
+                            Button(role: .destructive) {
+                                Task { await deleteFile(item) }
+                            } label: { Image(systemName: "trash") }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                }
+            } header: { Text("File trong repo") }
+            footer: { Text("Bấm thùng rác để xoá file khỏi repo (commit xoá luôn trên GitHub).") }
+
             Section {
                 if let urlStr = repo.html_url, let url = URL(string: urlStr) {
                     Link(destination: url) {
@@ -343,6 +397,25 @@ struct GitHubRepoView: View {
                       allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             if case .success(let urls) = result { Task { await upload(urls) } }
         }
+    }
+
+    private func loadList() async {
+        loadingList = true; error = nil
+        let dir = folder.trimmingCharacters(in: CharacterSet(charactersIn: " /"))
+        do { contents = try await api.listContents(fullName: repo.full_name, path: dir, branch: branch) }
+        catch { self.error = error.localizedDescription }
+        loadingList = false
+    }
+
+    private func deleteFile(_ item: GHContent) async {
+        error = nil
+        do {
+            try await api.deleteFile(fullName: repo.full_name, path: item.path,
+                                     message: "Xoá \(item.name) từ KENIOS",
+                                     branch: branch, sha: item.sha)
+            contents.removeAll { $0.id == item.id }
+            log.insert("✓ Đã xoá \(item.path)", at: 0)
+        } catch { self.error = error.localizedDescription }
     }
 
     private func upload(_ urls: [URL]) async {

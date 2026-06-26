@@ -19,6 +19,9 @@ struct CreatorToolsView: View {
                     navLink("Đổi đuôi ảnh (PNG ⇄ JPG)", "arrow.left.arrow.right.square", ImageConvertView())
                     navLink("Trích nhạc từ video (M4A)", "music.note", AudioExtractView())
                 }
+                Section("Internet · Tin tức · Mạng xã hội") {
+                    navLink("Tin tức · Thời sự · Mạng xã hội", "newspaper.fill", NewsToolsView())
+                }
                 Section("Văn bản & Caption") {
                     navLink("Đếm ký tự / từ", "textformat.123", CaptionCounterView())
                     navLink("Chữ kiểu (fancy)", "sparkles", FancyTextView())

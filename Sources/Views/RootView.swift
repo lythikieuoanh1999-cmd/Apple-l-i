@@ -54,7 +54,10 @@ struct MainTabView: View {
                     .tag(6)
             }
         }
-        .onAppear { if store.tab == 0 || store.tab == 1 || store.tab == 10 { store.tab = 2 } }
+        .onAppear {
+            if store.tab == 0 || store.tab == 1 || store.tab == 10 { store.tab = 2 }
+            WelcomeVoice.playOnce()   // giọng chào mừng khi vào app
+        }
         .task {
             // Giảm tải khởi động (đã bỏ Chat/AI key) → đỡ "đứng" khi mở app
             await store.loadProviders()
