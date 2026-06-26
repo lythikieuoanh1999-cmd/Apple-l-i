@@ -89,16 +89,39 @@ struct MainTabView: View {
             if store.tab == 0 || store.tab == 1 || store.tab == 10 { store.tab = 2 }
             WelcomeVoice.playOnce()   // giọng chào mừng khi vào app
         }
+        .onChange(of: store.tab) { t in
+            // Báo cho admin biết người dùng đang ở mục nào
+            let name = tabName(t)
+            Task { try? await store.api.sendActivity(name) }
+        }
         .task {
             // Giảm tải khởi động (đã bỏ Chat/AI key) → đỡ "đứng" khi mở app
             await store.loadProviders()
             await store.refreshCredits()
             await store.refreshMe()
             // Theo dõi bảo trì + gói theo chu kỳ
+            try? await store.api.sendActivity(tabName(store.tab))
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 20_000_000_000)
                 await store.refreshMe()
             }
+        }
+    }
+
+    private func tabName(_ t: Int) -> String {
+        switch t {
+        case 2: return "Mạng xã hội"
+        case 3: return "Thư viện"
+        case 4: return "Bạn bè"
+        case 7: return "Đọc (TTS)"
+        case 8: return "Giải trí"
+        case 11: return "Công cụ"
+        case 12: return "Trò chơi"
+        case 13: return "GitHub"
+        case 14: return "Video"
+        case 5: return "Cài đặt"
+        case 6: return "Quản trị"
+        default: return "Khác"
         }
     }
 }
