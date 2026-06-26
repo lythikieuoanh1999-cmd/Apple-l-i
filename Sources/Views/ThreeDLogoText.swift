@@ -1,47 +1,38 @@
 import SwiftUI
 
-/// Logo chữ **KENIOS** nổi 3D — dùng ở góc trái toolbar mọi màn hình.
-/// Kỹ thuật: Xếp chồng nhiều lớp text lệch pixel + gradient + shadow.
-struct ThreeDLogoText: View {
+/// Chữ 7 sắc cầu vồng **chạy nối tiếp liên tục** (dùng cho logo + tiêu đề).
+struct RainbowText: View {
+    let text: String
     var size: CGFloat = 22
+    var weight: Font.Weight = .black
+    var design: Font.Design = .rounded
+
+    // 7 sắc cầu vồng (lặp lại màu đầu để vòng màu liền mạch)
+    private let colors: [Color] = [.red, .orange, .yellow, .green, .blue, .indigo, .purple, .red]
 
     var body: some View {
-        ZStack {
-            // ---- Shadow layers (3D depth) ----
-            ForEach(0..<5, id: \.self) { i in
-                Text("KENIOS")
-                    .font(.system(size: size, weight: .black, design: .rounded))
-                    .foregroundStyle(
-                        Color.black.opacity(0.35 - Double(i) * 0.06)
-                    )
-                    .offset(x: CGFloat(i) * 0.4, y: CGFloat(i) * 0.7)
-            }
-            // ---- Glow layer ----
-            Text("KENIOS")
-                .font(.system(size: size, weight: .black, design: .rounded))
+        TimelineView(.animation) { tl in
+            // Quay vòng màu theo thời gian (5s/vòng) → các màu "chạy" liên tục
+            let secs = tl.date.timeIntervalSinceReferenceDate
+            let hue = secs.truncatingRemainder(dividingBy: 5) / 5 * 360
+            Text(text)
+                .font(.system(size: size, weight: weight, design: design))
                 .foregroundStyle(
-                    LinearGradient(
-                        colors: [.cyan.opacity(0.6), Theme.accent.opacity(0.4), Theme.purple.opacity(0.5)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                    LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing)
                 )
-                .blur(radius: 4)
-            // ---- Main gradient text ----
-            Text("KENIOS")
-                .font(.system(size: size, weight: .black, design: .rounded))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [.cyan, Theme.accent, Theme.purple, .pink],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .shadow(color: Theme.accent.opacity(0.6), radius: 3, x: 0, y: 2)
-                .shadow(color: Theme.purple.opacity(0.3), radius: 6, x: 0, y: 4)
+                .hueRotation(.degrees(hue))
+                .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
         }
         .lineLimit(1)
-        .fixedSize(horizontal: true, vertical: false)   // không để thanh điều hướng cắt thành "K..."
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+/// Logo chữ **KENIOS** — giờ là chữ cầu vồng động, dùng ở toolbar mọi màn hình.
+struct ThreeDLogoText: View {
+    var size: CGFloat = 22
+    var body: some View {
+        RainbowText(text: "KENIOS", size: size)
     }
 }
 
@@ -49,8 +40,8 @@ struct ThreeDLogoText: View {
 struct ThreeDLogoLarge: View {
     var body: some View {
         VStack(spacing: 6) {
-            ThreeDLogoText(size: 38)
-            Text("Multi-AI Coding Assistant")
+            RainbowText(text: "KENIOS", size: 40)
+            Text("Mạng xã hội · Video · Giải trí · Công cụ")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

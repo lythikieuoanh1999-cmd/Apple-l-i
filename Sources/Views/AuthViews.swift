@@ -30,10 +30,8 @@ struct LoginView: View {
                     }
                     .padding(.top, 52)
 
-                    Text("KENIOS")
-                        .font(.system(size: 36, weight: .black, design: .rounded))
-                        .foregroundStyle(Theme.buttonGradient)
-                    Text("Mạng xã hội · Video · Live · Tiện ích")
+                    RainbowText(text: "KENIOS", size: 40)
+                    Text("Mạng xã hội · Video · Giải trí · Công cụ")
                         .font(.subheadline).foregroundStyle(.secondary)
 
                     VStack(alignment: .leading, spacing: 6) {
