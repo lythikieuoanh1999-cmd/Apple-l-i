@@ -46,6 +46,7 @@ struct MaintenanceOverlay: View {
 
 struct MainTabView: View {
     @EnvironmentObject var store: AppStore
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         TabView(selection: $store.tab) {
@@ -101,10 +102,15 @@ struct MainTabView: View {
             await store.refreshMe()
             // Theo dõi bảo trì + gói theo chu kỳ
             try? await store.api.sendActivity(tabName(store.tab))
+            // Đồng bộ bảo trì + gói với máy chủ VPS mỗi 10 giây
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 20_000_000_000)
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
                 await store.refreshMe()
             }
+        }
+        .onChange(of: scenePhase) { phase in
+            // Mở lại app từ nền → kiểm tra bảo trì ngay
+            if phase == .active { Task { await store.refreshMe() } }
         }
     }
 
