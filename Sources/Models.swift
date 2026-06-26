@@ -15,10 +15,12 @@ struct UserInfo: Decodable, Hashable {
     let username: String
     let email: String?
     let phone: String?
+    let publicId: String?
     let isAdmin: Bool?
     let plan: String?
     let credits: Int?
     let lang: String?
+    let status: String?
 }
 
 struct AuthResponse: Decodable { let token: String; let user: UserInfo }
@@ -30,6 +32,7 @@ struct ChatResponse: Decodable {
     let conversationId: Int
     let provider: String
     let savedFiles: [SavedFile]?
+    let tokensUsed: Int?
 }
 
 struct EnsembleResponse: Decodable {
@@ -43,6 +46,8 @@ struct Conversation: Identifiable, Decodable, Hashable {
     let title: String?
     let provider: String?
     let updatedAt: Int?
+    let pinned: Int?
+    let shareToken: String?
 }
 
 struct ChatMessage: Identifiable, Decodable {
@@ -92,10 +97,15 @@ struct AdminUser: Identifiable, Decodable, Hashable {
     let username: String
     let email: String?
     let phone: String?
-    let isAdmin: Int?
+    let publicId: String?
+    let isAdmin: Bool?
     let banned: Int?
     let plan: String?
     let credits: Int?
+    let status: String?
+    let suspendUntil: Int?
+    let lastSeen: Int?
+    let lastFeature: String?
     let createdAt: Int?
 }
 
@@ -177,4 +187,291 @@ struct BankSettings: Decodable, Hashable {
     var bankAccount: String
     var bankName: String
     var bankWebhook: String
+    var bankApikey: String = ""
 }
+
+// ---- Đính kèm (Attachment) ----
+struct AttachmentItem: Identifiable, Hashable {
+    var id = UUID()
+    var name: String
+    var data: Data
+    var mime: String
+    var type: String  // "image" or "file"
+    var selected: Bool = true
+    var thumbnail: Data?  // for image preview
+}
+
+// ---- Prompt mẫu ----
+struct PromptTemplate: Identifiable, Decodable, Hashable {
+    let id: Int
+    let title: String
+    let content: String
+    let category: String?
+    let isPublic: Int?
+    let userId: Int?
+}
+
+// ---- Chia sẻ hội thoại ----
+struct ShareResponse: Decodable { let shareToken: String; let shareUrl: String }
+
+// ---- Tìm kiếm tin nhắn ----
+struct SearchResult: Identifiable, Decodable, Hashable {
+    let id: Int
+    let conversationId: Int
+    let conversationTitle: String?
+    let role: String
+    let snippet: String
+}
+
+// ---- Tin nhắn yêu thích ----
+struct FavoriteMessage: Identifiable, Decodable, Hashable {
+    let id: Int
+    let messageContent: String
+    let conversationId: Int?
+    let provider: String?
+    let createdAt: Int?
+}
+
+// ---- Admin thống kê ----
+struct AdminStats: Decodable {
+    let totalUsers: Int
+    let newUsers7d: Int
+    let totalConversations: Int
+    let totalMessages: Int
+    let revenueTotal: Int
+    let revenue30d: Int
+    let totalFiles: Int
+    let topProviders: [ProviderStat]
+}
+
+struct ProviderStat: Decodable, Hashable {
+    let provider: String
+    let count: Int
+}
+
+// ---- Admin API key quản lý ----
+struct AdminKeyInfo: Identifiable, Decodable, Hashable {
+    var id: String { provider }
+    let provider: String
+    let configured: Bool
+}
+
+// ---- Xuất mã zip ----
+struct ZipResponse: Decodable {
+    let zipBase64: String
+    let filename: String
+    let fileCount: Int
+}
+
+// ---- Phân hệ mạng xã hội ----
+struct SocialGenResponse: Decodable {
+    let content: String
+}
+struct SocialDownloadResponse: Decodable {
+    let fileId: Int
+    let filename: String
+    let size: Int
+}
+
+struct StreamKeyResponse: Decodable {
+    let rtmpUrl: String
+    let streamKey: String
+    let title: String?
+}
+
+// TikTok Live (đọc bình luận tự động)
+struct TikTokLiveStatus: Decodable {
+    let ok: Bool?
+    let status: String
+    let username: String?
+}
+
+struct TikTokLiveEvent: Decodable, Identifiable {
+    let id: Int
+    let type: String      // join | gift | comment | follow | share
+    let name: String
+    let content: String
+}
+
+struct TikTokLiveEventsResponse: Decodable {
+    let status: String
+    let error: String?
+    let events: [TikTokLiveEvent]
+    let last: Int
+}
+
+struct TranslateResponse: Decodable {
+    let text: String
+    let source: String?
+}
+
+// KENIOS AI — API key cấp cho người khác
+struct ApiTokenCreateResponse: Decodable { let token: String }
+struct ApiTokenItem: Decodable, Identifiable {
+    var id: String { token }
+    let token: String
+    let name: String?
+    let calls: Int?
+    let createdAt: Int?
+}
+struct ApiTokenListResponse: Decodable { let tokens: [ApiTokenItem] }
+
+// Thiết bị đăng ký (UDID) cho phân phối ad-hoc
+struct DeviceItem: Decodable, Identifiable {
+    var id: String { udid }
+    let udid: String
+    let product: String?
+    let version: String?
+    let serial: String?
+    let name: String?
+    let createdAt: Int?
+}
+struct DevicesResponse: Decodable { let devices: [DeviceItem] }
+
+// OTP — mã xác nhận email
+struct OtpSendResponse: Decodable {
+    let sent: Bool
+    let channel: String       // internal | external | none
+    let hint: String?
+    let debugCode: String?
+}
+
+struct EncryptResponse: Decodable {
+    let result: String
+}
+
+struct BinaryAnalysisResponse: Decodable {
+    let fileType: String
+    let entryPoint: String?
+    let architecture: String?
+    let sections: [String]?
+    let strings: [String]?
+    let hexDump: String
+}
+
+struct AsmResponse: Decodable {
+    let result: String
+}
+
+struct SSHResultResponse: Decodable {
+    let stdout: String
+    let stderr: String
+    let exitCode: Int
+}
+
+struct HTTPTestResponse: Decodable {
+    let status: Int
+    let headers: [String: String]
+    let body: String
+}
+
+struct SQLResultResponse: Decodable {
+    let columns: [String]
+    let rows: [[String]]
+    let message: String?
+}
+
+struct CleanupResponse: Decodable {
+    let deletedMessages: Int
+    let deletedConversations: Int
+    let freedSpace: String
+    let message: String
+}
+
+struct UserSearchResult: Identifiable, Decodable, Hashable {
+    let id: Int
+    let username: String
+    let publicId: String?
+    let phone: String?
+}
+
+// Video feed (TikTok của riêng app)
+struct PostItem: Identifiable, Decodable, Hashable {
+    let id: Int
+    let caption: String?
+    let likes: Int
+    let createdAt: Int?
+    let fileId: Int
+    let userId: Int?
+    let username: String
+    let publicId: String?
+    let name: String?
+    let mime: String?
+    let liked: Bool
+    let following: Bool?
+}
+
+struct FollowResponse: Decodable { let following: Bool }
+struct UserProfile: Decodable {
+    let id: Int
+    let username: String
+    let publicId: String?
+    let followers: Int
+    let following: Int
+    let posts: Int
+    let isFollowing: Bool
+}
+
+struct PostCreateResponse: Decodable { let id: Int; let message: String }
+struct LikeResponse: Decodable { let liked: Bool; let likes: Int }
+struct LikesResponse: Decodable { let likes: Int }
+
+// Live (phòng live + bình luận)
+struct LiveRoom: Identifiable, Decodable, Hashable {
+    let id: Int
+    let title: String?
+    let hlsUrl: String?
+    let streamKey: String?
+    let rtmpUrl: String?
+    let viewers: Int
+    let likes: Int
+    let active: Int?
+    let hostId: Int?
+    let username: String
+    let publicId: String?
+    let createdAt: Int?
+}
+struct LiveComment: Identifiable, Decodable, Hashable {
+    let id: Int
+    let username: String?
+    let content: String
+    let createdAt: Int?
+}
+struct LiveCreateResponse: Decodable {
+    let id: Int
+    let message: String
+    let hlsUrl: String?
+    let rtmpUrl: String?
+    let streamKey: String?
+}
+
+// Trạng thái app (bảo trì)
+struct AppStatus: Decodable {
+    let maintenance: Bool
+    let message: String
+    let version: String?
+}
+
+struct FriendRequestItem: Identifiable, Decodable, Hashable {
+    let id: Int
+    let senderId: Int
+    let senderName: String
+    let receiverId: Int
+    let receiverName: String
+    let createdAt: Int
+}
+
+struct FriendItem: Identifiable, Decodable, Hashable {
+    let id: Int
+    let username: String
+}
+
+struct DirectMessageItem: Identifiable, Decodable, Hashable {
+    let id: Int
+    let senderId: Int
+    let receiverId: Int
+    let content: String
+    let createdAt: Int
+    let isRead: Int
+}
+

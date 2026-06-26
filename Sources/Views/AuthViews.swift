@@ -13,14 +13,26 @@ struct LoginView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    RoundedRectangle(cornerRadius: 18)
-                        .fill(Theme.accent)
-                        .frame(width: 76, height: 76)
-                        .overlay(Image(systemName: "square").font(.system(size: 34, weight: .bold))
-                            .foregroundStyle(.white))
-                        .padding(.top, 40)
-                    Text("KENIOS").font(.title.bold())
-                    Text("Multi-AI Assistant").font(.subheadline).foregroundStyle(.secondary)
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 30, style: .continuous)
+                            .fill(Theme.heroGradient)
+                            .frame(width: 116, height: 116)
+                            .shadow(color: Theme.purple.opacity(0.55), radius: 26, y: 12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 30, style: .continuous)
+                                    .stroke(LinearGradient(colors: [.white.opacity(0.5), .clear],
+                                                           startPoint: .topLeading, endPoint: .bottomTrailing),
+                                            lineWidth: 1.5)
+                            )
+                        Text("🦊")
+                            .font(.system(size: 66))
+                            .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+                    }
+                    .padding(.top, 52)
+
+                    RainbowText(text: "KENIOS", size: 40)
+                    Text("Mạng xã hội · Video · Giải trí · Công cụ")
+                        .font(.subheadline).foregroundStyle(.secondary)
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Username").font(.caption).foregroundStyle(.secondary)
@@ -55,28 +67,31 @@ struct LoginView: View {
                             .overlay(RoundedRectangle(cornerRadius: 14).stroke(.secondary.opacity(0.4)))
                     }.padding(.horizontal)
 
-                    if store.baseURL.isEmpty {
-                        NavigationLink { ServerSetupView() } label: {
-                            HStack {
-                                Image(systemName: "globe").foregroundStyle(.orange)
-                                Text("Chưa có máy chủ — bấm để kết nối").font(.caption)
+                    // Ẩn hoàn toàn phần liên kết máy chủ khi đã cài sẵn URL mặc định (Config.defaultServerURL)
+                    if Config.defaultServerURL.isEmpty {
+                        if store.baseURL.isEmpty {
+                            NavigationLink { ServerSetupView() } label: {
+                                HStack {
+                                    Image(systemName: "globe").foregroundStyle(.orange)
+                                    Text("Chưa có máy chủ — bấm để kết nối").font(.caption)
+                                }
+                                .padding().frame(maxWidth: .infinity)
+                                .background(Color(.secondarySystemBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }.padding(.horizontal)
+                        } else {
+                            HStack(spacing: 8) {
+                                Image(systemName: "globe").foregroundStyle(Theme.accent)
+                                VStack(alignment: .leading) {
+                                    Text("Máy chủ \(store.serverType)").font(.caption).foregroundStyle(.secondary)
+                                    Text(store.baseURL).font(.caption).foregroundStyle(Theme.accent).lineLimit(1)
+                                }
+                                Spacer()
+                                Button("Đổi") { showConnections = true }.font(.caption)
                             }
-                            .padding().frame(maxWidth: .infinity)
-                            .background(Color(.secondarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                        }.padding(.horizontal)
-                    } else {
-                        HStack(spacing: 8) {
-                            Image(systemName: "globe").foregroundStyle(Theme.accent)
-                            VStack(alignment: .leading) {
-                                Text("Máy chủ \(store.serverType)").font(.caption).foregroundStyle(.secondary)
-                                Text(store.baseURL).font(.caption).foregroundStyle(Theme.accent).lineLimit(1)
-                            }
-                            Spacer()
-                            Button("Đổi") { showConnections = true }.font(.caption)
+                            .padding().background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 12)).padding(.horizontal)
                         }
-                        .padding().background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 12)).padding(.horizontal)
                     }
                 }
             }
@@ -105,6 +120,14 @@ struct RegisterView: View {
     @State private var loading = false
     @State private var error: String?
 
+    // OTP — mã xác nhận email
+    @State private var codeSent = false
+    @State private var code = ""
+    @State private var sendingCode = false
+    @State private var otpInfo: String?
+
+    private var emailValid: Bool { email.contains("@") && email.contains(".") }
+
     var body: some View {
         Form {
             Section("Tạo tài khoản") {
@@ -113,22 +136,46 @@ struct RegisterView: View {
                 SecureField("Mật khẩu * (≥6 ký tự)", text: $password)
                 TextField("Gmail (tuỳ chọn)", text: $email)
                     .textInputAutocapitalization(.never).keyboardType(.emailAddress)
+                    .autocorrectionDisabled()
                 TextField("Số điện thoại (tuỳ chọn)", text: $phone).keyboardType(.phonePad)
+                Text("Chỉ cần SĐT hoặc Gmail là được — không cần mã xác nhận.")
+                    .font(.caption2).foregroundStyle(.secondary)
             }
+
             if let error { Text(error).foregroundStyle(.red).font(.footnote) }
             Section {
                 Button { Task { await doRegister() } } label: {
                     HStack { if loading { ProgressView().padding(.trailing, 6) }; Text("Tạo tài khoản") }
-                }.disabled(loading)
+                }
+                .disabled(loading)
             }
         }
         .navigationTitle("Đăng ký")
     }
 
+    private func sendCode() async {
+        sendingCode = true; error = nil; otpInfo = nil
+        do {
+            let r = try await store.api.sendOtp(email: email)
+            codeSent = true
+            switch r.channel {
+            case "external": otpInfo = "Đã gửi mã tới \(email). Kiểm tra hộp thư (cả mục Spam)."
+            case "internal": otpInfo = "Đã gửi mã vào hộp thư \(email)."
+            default:
+                otpInfo = r.hint ?? "Chưa gửi được mã. Kiểm tra cấu hình email trên máy chủ."
+            }
+            if let dbg = r.debugCode { otpInfo = "Mã (chế độ thử): \(dbg)" }
+        } catch { self.error = error.localizedDescription }
+        sendingCode = false
+    }
+
     private func doRegister() async {
         loading = true; error = nil
         do {
-            let resp = try await store.api.register(username, password, email: email, phone: phone)
+            // chỉ gửi mã nếu người dùng thực sự đã nhập (không bắt buộc)
+            let otp = (codeSent && code.count >= 4) ? code : nil
+            let resp = try await store.api.register(username, password, email: email, phone: phone,
+                                                    code: otp)
             store.setAuth(resp); await store.loadProviders(); dismiss()
         } catch { self.error = error.localizedDescription }
         loading = false

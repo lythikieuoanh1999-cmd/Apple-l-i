@@ -5,7 +5,7 @@ enum Config {
     //    Khi có giá trị này, mở app là đăng nhập luôn — KHÔNG cần bước liên kết.
     //    Để TRỐNG ("") nếu muốn bắt người dùng tự nhập máy chủ khi mở app.
     //    Ví dụ: "https://api.kenios.com"  hoặc  "http://123.45.67.89:8000"
-    static let defaultServerURL = ""
+    static let defaultServerURL = "http://103.131.56.11:8000"
 
     static let defaultServerType = "VPS"
 }

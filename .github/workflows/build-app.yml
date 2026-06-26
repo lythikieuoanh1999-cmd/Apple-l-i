@@ -1,0 +1,99 @@
+name: Build App (IPA chưa ký)
+
+on:
+  push:
+    branches: [ "**" ]
+    paths:
+      - "Sources/**"
+      - "project.yml"
+      - "build-app.sh"
+      - ".github/workflows/build-app.yml"
+  pull_request:
+  workflow_dispatch:
+
+# Hủy lần build cũ khi có push mới trên cùng branch
+concurrency:
+  group: build-app-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # cần để tạo Release đính kèm IPA
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Dùng Xcode ổn định mới nhất trên runner (code đã tương thích iOS 16+, không cần SDK iOS 26)
+      - name: Select latest Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Show Xcode & Swift version
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: |
+          set -eo pipefail
+          xcodegen generate
+          xcodebuild -list -project KENIOS.xcodeproj
+
+      - name: Build (no code signing)
+        run: |
+          set -eo pipefail
+          xcodebuild \
+            -project KENIOS.xcodeproj \
+            -scheme KENIOS \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            ASSETCATALOG_COMPILER_APPICON_NAME="" \
+            build
+
+      - name: Package into unsigned .ipa
+        run: |
+          set -eo pipefail
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "Không tìm thấy file .app sau khi build."
+            find build/Build/Products -maxdepth 3
+            exit 1
+          fi
+          echo "App: $APP_PATH"
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -r KENIOS.ipa Payload >/dev/null
+          ls -lh KENIOS.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KENIOS-ipa
+          path: KENIOS.ipa
+          if-no-files-found: error
+
+      # Phát hành Release để app tải IPA trực tiếp qua link
+      - name: Publish Release with IPA
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: KENIOS build ${{ github.run_number }}
+          files: KENIOS.ipa
+          body: "Bản build tự động KENIOS (IPA chưa ký). Tải KENIOS.ipa để sideload."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

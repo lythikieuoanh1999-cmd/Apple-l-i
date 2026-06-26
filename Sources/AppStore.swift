@@ -12,6 +12,14 @@ final class AppStore: ObservableObject {
     @Published var isAdmin: Bool = false
     @Published var plan: String = "free"
     @Published var credits: Int = 0
+    @Published var publicId: String = ""
+
+    // Bảo trì (admin bật → khoá app người dùng)
+    @Published var maintenance: Bool = false
+    @Published var maintenanceMessage: String = ""
+
+    /// Admin luôn Pro vĩnh viễn; còn lại tuỳ gói.
+    var isPro: Bool { isAdmin || plan.lowercased() == "pro" }
 
     @Published var providers: [Provider] = []
     @Published var configuredKeys: Set<String> = []
@@ -26,6 +34,14 @@ final class AppStore: ObservableObject {
 
     @Published var profiles: [ServerProfile] = []
 
+    @Published var biometricsEnabled: Bool
+    @Published var favorites: [FavoriteMessage] = []
+    @Published var promptTemplates: [PromptTemplate] = []
+
+    @Published var friends: [FriendItem] = []
+    @Published var friendRequests: [FriendRequestItem] = []
+    @Published var directMessages: [Int: [DirectMessageItem]] = [:]
+
     private let d = UserDefaults.standard
 
     init() {
@@ -39,9 +55,11 @@ final class AppStore: ObservableObject {
         isAdmin = d.bool(forKey: "isAdmin")
         plan = d.string(forKey: "plan") ?? "free"
         credits = d.integer(forKey: "credits")
+        publicId = d.string(forKey: "publicId") ?? ""
         isDark = d.object(forKey: "isDark") as? Bool ?? true
         language = d.string(forKey: "language") ?? "vi"
         systemPrompt = d.string(forKey: "systemPrompt") ?? ""
+        biometricsEnabled = d.bool(forKey: "biometricsEnabled")
         if let data = d.data(forKey: "profiles"),
            let list = try? JSONDecoder().decode([ServerProfile].self, from: data) {
             profiles = list
@@ -55,6 +73,7 @@ final class AppStore: ObservableObject {
     func setDark(_ v: Bool) { isDark = v; d.set(v, forKey: "isDark") }
     func setLanguage(_ v: String) { language = v; d.set(v, forKey: "language") }
     func setSystemPrompt(_ v: String) { systemPrompt = v; d.set(v, forKey: "systemPrompt") }
+    func setBiometrics(_ v: Bool) { biometricsEnabled = v; d.set(v, forKey: "biometricsEnabled") }
 
     func saveServer(url: String, type: String) {
         baseURL = url; serverType = type
@@ -81,6 +100,7 @@ final class AppStore: ObservableObject {
         isAdmin = resp.user.isAdmin ?? false
         plan = resp.user.plan ?? "free"
         credits = resp.user.credits ?? 0
+        publicId = resp.user.publicId ?? ""
         Keychain.save("token", resp.token)
         d.set(resp.user.username, forKey: "username")
         d.set(resp.user.email ?? "", forKey: "email")
@@ -88,6 +108,22 @@ final class AppStore: ObservableObject {
         d.set(isAdmin, forKey: "isAdmin")
         d.set(plan, forKey: "plan")
         d.set(credits, forKey: "credits")
+        d.set(publicId, forKey: "publicId")
+    }
+
+    /// Tải lại hồ sơ + trạng thái bảo trì.
+    func refreshMe() async {
+        if let me = try? await api.getMe() {
+            isAdmin = me.isAdmin ?? false
+            plan = me.plan ?? "free"
+            publicId = me.publicId ?? publicId
+            d.set(isAdmin, forKey: "isAdmin"); d.set(plan, forKey: "plan")
+            d.set(publicId, forKey: "publicId")
+        }
+        if let st = try? await api.appStatus() {
+            maintenance = st.maintenance
+            maintenanceMessage = st.message
+        }
     }
 
     func refreshCredits() async {
@@ -107,11 +143,45 @@ final class AppStore: ObservableObject {
         Keychain.delete("token")
         providers = []; configuredKeys = []; conversations = []
         activeConversation = nil; tab = 0
+        favorites = []; promptTemplates = []
+        friends = []; friendRequests = []; directMessages = [:]
         d.set(false, forKey: "isAdmin")
     }
 
-    func loadProviders() async { if let l = try? await api.getProviders() { providers = l } }
-    func loadKeys() async { if let l = try? await api.listKeys() { configuredKeys = Set(l.map { $0.provider }) } }
+    func loadProviders() async {
+        if let l = try? await api.getProviders() { providers = l }
+        // KENIOS AI tự host: không cần key → luôn coi là đã cấu hình
+        if providers.contains(where: { $0.id == "kenios" }) { configuredKeys.insert("kenios") }
+    }
+    func loadKeys() async {
+        if let l = try? await api.listKeys() {
+            var s = Set(l.map { $0.provider })
+            if providers.contains(where: { $0.id == "kenios" }) { s.insert("kenios") }
+            configuredKeys = s
+        }
+    }
     func refreshConversations() async { if let l = try? await api.conversations() { conversations = l } }
     func openConversation(_ c: Conversation?) { activeConversation = c; tab = 0 }
+
+    func refreshFavorites() async {
+        if let l = try? await api.listFavorites() { favorites = l }
+    }
+
+    func refreshPrompts() async {
+        if let l = try? await api.listPrompts() { promptTemplates = l }
+    }
+
+    func refreshFriends() async {
+        if let l = try? await api.listFriends() { friends = l }
+    }
+
+    func refreshFriendRequests() async {
+        if let l = try? await api.listFriendRequests() { friendRequests = l }
+    }
+
+    func refreshDirectMessages(friendId: Int) async {
+        if let l = try? await api.getDirectMessages(friendId: friendId) {
+            directMessages[friendId] = l
+        }
+    }
 }

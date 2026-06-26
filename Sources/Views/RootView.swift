@@ -9,6 +9,12 @@ struct RootView: View {
                 LoginView()
             } else {
                 MainTabView()
+                    .overlay {
+                        // Bảo trì: khoá app người dùng (admin vẫn dùng được)
+                        if store.maintenance && !store.isAdmin {
+                            MaintenanceOverlay(message: store.maintenanceMessage)
+                        }
+                    }
             }
         }
         .tint(Theme.accent)
@@ -16,34 +22,95 @@ struct RootView: View {
     }
 }
 
-struct MainTabView: View {
-    @EnvironmentObject var store: AppStore
-
+struct MaintenanceOverlay: View {
+    let message: String
     var body: some View {
-        TabView(selection: $store.tab) {
-            ChatView()
-                .tabItem { Label("Trò chuyện", systemImage: "bubble.left.and.bubble.right.fill") }
-                .tag(0)
-            CodeToolsView()
-                .tabItem { Label("Lập trình", systemImage: "chevron.left.forwardslash.chevron.right") }
-                .tag(1)
-            LibraryView()
-                .tabItem { Label("Thư viện", systemImage: "clock.arrow.circlepath") }
-                .tag(2)
-            SettingsView()
-                .tabItem { Label("Cài đặt", systemImage: "gearshape.fill") }
-                .tag(3)
-            if store.isAdmin {
-                AdminView()
-                    .tabItem { Label("Quản trị", systemImage: "person.2.badge.gearshape.fill") }
-                    .tag(4)
+        ZStack {
+            Theme.bgNavy.ignoresSafeArea()
+            VStack(spacing: 18) {
+                Image(systemName: "wrench.and.screwdriver.fill")
+                    .font(.system(size: 60)).foregroundStyle(Theme.gold)
+                RainbowText(text: "KENIOS", size: 38)
+                Text("Đang nâng cấp phiên bản")
+                    .font(.title3.bold()).foregroundStyle(.white)
+                Text(message.isEmpty
+                     ? "Ứng dụng đang nâng cấp phiên bản. Vui lòng đợi trong giây lát."
+                     : message)
+                    .font(.subheadline).foregroundStyle(.white.opacity(0.85))
+                    .multilineTextAlignment(.center).padding(.horizontal, 32)
+                ProgressView().tint(.white)
             }
         }
+    }
+}
+
+struct MainTabView: View {
+    @EnvironmentObject var store: AppStore
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        // Chỉ 5 tab chính cho gọn & rõ — các mục khác nằm trong "Khám phá"
+        TabView(selection: $store.tab) {
+            SocialMediaToolsView()
+                .tabItem { Label("Mạng xã hội", systemImage: "globe.badge.ellipsis") }
+                .tag(2)
+            VideoFeedView() // TikTok của riêng app
+                .tabItem { Label("Video", systemImage: "play.rectangle.on.rectangle.fill") }
+                .tag(14)
+            LiveView() // phòng live + bình luận
+                .tabItem { Label("Live", systemImage: "dot.radiowaves.left.and.right") }
+                .tag(15)
+            FriendsView()
+                .tabItem { Label("Bạn bè", systemImage: "person.2.fill") }
+                .tag(4)
+            ExploreHubView() // lưới tất cả tính năng còn lại
+                .tabItem { Label("Khám phá", systemImage: "square.grid.2x2.fill") }
+                .tag(16)
+        }
+        .onAppear {
+            if ![2, 14, 15, 4, 16].contains(store.tab) { store.tab = 2 }
+            WelcomeVoice.playOnce()   // giọng chào mừng khi vào app
+        }
+        .onChange(of: store.tab) { t in
+            // Báo cho admin biết người dùng đang ở mục nào
+            let name = tabName(t)
+            Task { try? await store.api.sendActivity(name) }
+        }
         .task {
+            // Giảm tải khởi động (đã bỏ Chat/AI key) → đỡ "đứng" khi mở app
             await store.loadProviders()
-            await store.loadKeys()
-            await store.refreshConversations()
             await store.refreshCredits()
+            await store.refreshMe()
+            // Theo dõi bảo trì + gói theo chu kỳ
+            try? await store.api.sendActivity(tabName(store.tab))
+            // Đồng bộ bảo trì + gói với máy chủ VPS mỗi 10 giây
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                await store.refreshMe()
+            }
+        }
+        .onChange(of: scenePhase) { phase in
+            // Mở lại app từ nền → kiểm tra bảo trì ngay
+            if phase == .active { Task { await store.refreshMe() } }
+        }
+    }
+
+    private func tabName(_ t: Int) -> String {
+        switch t {
+        case 2: return "Mạng xã hội"
+        case 3: return "Thư viện"
+        case 4: return "Bạn bè"
+        case 7: return "Đọc (TTS)"
+        case 8: return "Giải trí"
+        case 11: return "Công cụ"
+        case 12: return "Trò chơi"
+        case 13: return "GitHub"
+        case 14: return "Video"
+        case 15: return "Live"
+        case 16: return "Khám phá"
+        case 5: return "Cài đặt"
+        case 6: return "Quản trị"
+        default: return "Khác"
         }
     }
 }

@@ -20,11 +20,14 @@ targets:
         CFBundleShortVersionString: "3.0"
         CFBundleVersion: "1"
         LSRequiresIPhoneOS: true
+        UIBackgroundModes:
+          - audio
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         NSCameraUsageDescription: "Cho phép chụp ảnh để đính kèm vào chat AI."
         NSPhotoLibraryUsageDescription: "Cho phép đính ảnh từ thư viện vào chat AI."
+        NSPhotoLibraryAddUsageDescription: "Cho phép lưu video / ảnh đã tải về vào Thư viện ảnh của máy."
         NSMicrophoneUsageDescription: "Cho phép thu âm để chuyển giọng nói thành văn bản."
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
@@ -45,7 +48,9 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.0"
         GENERATE_INFOPLIST_FILE: NO
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Không ép buộc AppIcon → build không chết nếu icon thiếu/hỏng.
+        # Muốn icon riêng: thêm lại dòng ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # và đảm bảo Sources/Assets.xcassets/AppIcon.appiconset/icon-1024.png hợp lệ (1024x1024, không alpha).
         DEVELOPMENT_TEAM: ""
         CODE_SIGNING_REQUIRED: NO
         CODE_SIGNING_ALLOWED: NO
