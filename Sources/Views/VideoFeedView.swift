@@ -74,7 +74,7 @@ struct VideoFeedView: View {
                             .font(.caption.bold())
                             .padding(.horizontal, 10).padding(.vertical, 5)
                             .background((p.following ?? false) ? Color.gray.opacity(0.3) : Theme.accent)
-                            .foregroundStyle((p.following ?? false) ? .secondary : .white)
+                            .foregroundStyle((p.following ?? false) ? Color.secondary : Color.white)
                             .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)

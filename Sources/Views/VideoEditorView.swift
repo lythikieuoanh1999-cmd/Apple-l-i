@@ -163,7 +163,7 @@ struct VideoEditorView: View {
                 } else {
                     error = "Không đọc được video."
                 }
-            } catch { error = error.localizedDescription }
+            } catch { self.error = error.localizedDescription }
             loading = false
         }
     }

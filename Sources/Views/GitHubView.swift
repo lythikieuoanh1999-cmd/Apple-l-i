@@ -56,17 +56,17 @@ final class GitHubAPI {
     }
 
     func me() async throws -> GHUser {
-        try JSONDecoder().decode(GHUser.self, from: request("/user"))
+        try JSONDecoder().decode(GHUser.self, from: try await request("/user"))
     }
     func repos() async throws -> [GHRepo] {
         try JSONDecoder().decode([GHRepo].self,
-            from: request("/user/repos?per_page=100&sort=updated&affiliation=owner"))
+            from: try await request("/user/repos?per_page=100&sort=updated&affiliation=owner"))
     }
     func createRepo(name: String, isPrivate: Bool) async throws -> GHRepo {
         let body = try JSONSerialization.data(withJSONObject: [
             "name": name, "private": isPrivate, "auto_init": true])
         return try JSONDecoder().decode(GHRepo.self,
-            from: request("/user/repos", method: "POST", body: body))
+            from: try await request("/user/repos", method: "POST", body: body))
     }
     // Lấy sha nếu file đã tồn tại (để cập nhật thay vì lỗi)
     func existingSha(fullName: String, path: String, branch: String) async -> String? {
@@ -87,7 +87,7 @@ final class GitHubAPI {
         let p = path.isEmpty
             ? "/repos/\(fullName)/contents?ref=\(branch)"
             : "/repos/\(fullName)/contents/\(path)?ref=\(branch)"
-        return try JSONDecoder().decode([GHContent].self, from: request(p))
+        return try JSONDecoder().decode([GHContent].self, from: try await request(p))
     }
     // Xoá 1 file khỏi repo
     func deleteFile(fullName: String, path: String, message: String,
