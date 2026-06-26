@@ -15,6 +15,9 @@ struct CreatorToolsView: View {
                 }
                 Section("Ảnh & Video") {
                     navLink("Công cụ ảnh (tách nền · nén · làm nét)", "wand.and.stars", ImageToolsView())
+                    navLink("Watermark chữ lên ảnh", "signature", WatermarkView())
+                    navLink("Đổi đuôi ảnh (PNG ⇄ JPG)", "arrow.left.arrow.right.square", ImageConvertView())
+                    navLink("Trích nhạc từ video (M4A)", "music.note", AudioExtractView())
                 }
                 Section("Văn bản & Caption") {
                     navLink("Đếm ký tự / từ", "textformat.123", CaptionCounterView())

@@ -2842,37 +2842,74 @@ async def tiktok_stream(b: TikTokStreamIn, user=Depends(get_user)) -> dict[str, 
         }
 
     url = "https://webcast.tiktok.com/webcast/room/create/"
+    # Cookie header dạng chuỗi (một số endpoint TikTok đọc raw Cookie header)
+    cookie_header = "; ".join(f"{k}={v}" for k, v in cookie_dict.items())
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer": "https://www.tiktok.com/",
-        "Accept": "application/json"
+        "Origin": "https://www.tiktok.com",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "vi-VN,vi;q=0.9,en;q=0.8",
+        "Cookie": cookie_header,
+        "X-Requested-With": "XMLHttpRequest",
     }
-    
+    # Tham số web-app TikTok thường bắt buộc
+    params = {
+        "aid": "1988",
+        "app_language": "vi",
+        "device_platform": "web_pc",
+        "priority_region": "VN",
+    }
+
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
             r = await client.post(
                 url,
                 headers=headers,
+                params=params,
                 cookies=cookie_dict,
                 data={
                     "title": f"Live Stream {int(time.time())}",
-                    "live_type": "0",  # OBS / GPP push
+                    "live_type": "0",        # OBS / RTMP push
+                    "hashtag_id": "0",
+                    "gen_replay": "1",
                 }
             )
-        if r.status_code == 200:
+        # Cố parse JSON dù status khác 200
+        try:
             res_json = r.json()
-            if res_json.get("status_code") == 0 and "data" in res_json:
-                stream_data = res_json["data"].get("stream_url", {})
-                rtmp_url = stream_data.get("rtmp_push_url")
-                stream_key = stream_data.get("push_key")
-                if rtmp_url and stream_key:
-                    return {
-                        "rtmp_url": rtmp_url,
-                        "stream_key": stream_key,
-                        "title": f"TikTok Live {int(time.time())}"
-                    }
-            err_msg = res_json.get("data", {}).get("prompts", "Tài khoản chưa đủ điều kiện Live Stream hoặc Cookie hết hạn.")
-            raise HTTPException(status_code=400, detail=err_msg)
+        except Exception:
+            raise HTTPException(status_code=400,
+                detail=f"TikTok trả về không phải JSON (HTTP {r.status_code}). Cookie có thể hết hạn.")
+
+        if res_json.get("status_code") == 0 and isinstance(res_json.get("data"), dict):
+            data = res_json["data"]
+            stream_data = data.get("stream_url", {}) or {}
+            # Đọc nhiều dạng field khác nhau TikTok dùng
+            rtmp_url = (stream_data.get("rtmp_push_url")
+                        or data.get("rtmp_push_url")
+                        or stream_data.get("push_url"))
+            stream_key = (stream_data.get("push_key")
+                          or data.get("push_key")
+                          or stream_data.get("stream_key"))
+            # Nếu chỉ có 1 link gộp rtmp://.../<key> thì tách ra
+            if rtmp_url and not stream_key and "/" in rtmp_url:
+                idx = rtmp_url.rfind("/")
+                stream_key = rtmp_url[idx + 1:]
+                rtmp_url = rtmp_url[:idx + 1]
+            if rtmp_url and stream_key:
+                return {
+                    "rtmp_url": rtmp_url,
+                    "stream_key": stream_key,
+                    "title": f"TikTok Live {int(time.time())}"
+                }
+
+        # Trích thông báo lỗi rõ ràng từ TikTok
+        data = res_json.get("data") if isinstance(res_json.get("data"), dict) else {}
+        err_msg = (data.get("prompts")
+                   or res_json.get("message")
+                   or "Tài khoản chưa đủ điều kiện Live (cần đủ follower / bật quyền Live OBS) hoặc Cookie hết hạn.")
+        raise HTTPException(status_code=400, detail=err_msg)
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
