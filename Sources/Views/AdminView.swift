@@ -13,6 +13,7 @@ struct AdminView: View {
     @State private var adminKeys: [AdminKeyInfo] = []
     @State private var adminKeyProvider: Provider?
     @State private var pendingPayments: [PaymentRecord] = []
+    @State private var maintMsg = "Ứng dụng đang nâng cấp phiên bản. Vui lòng đợi trong giây lát."
 
     var body: some View {
         NavigationStack {
@@ -122,24 +123,40 @@ struct AdminView: View {
                     if let message { Text(message).font(.footnote).foregroundStyle(.green) }
                 }
 
+                // ==================== Chế độ bảo trì ====================
+                Section("Chế độ bảo trì") {
+                    Toggle("Bật bảo trì (khoá app người dùng)", isOn: Binding(
+                        get: { store.maintenance },
+                        set: { on in Task { await setMaintenance(on) } }))
+                    TextField("Thông báo bảo trì", text: $maintMsg, axis: .vertical)
+                        .lineLimit(1...3)
+                    Text("Khi bật, mọi người dùng (trừ admin) thấy màn hình khoá tới khi bạn tắt.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+
                 // ==================== Danh sách người dùng ====================
                 Section("Người dùng (\(users.count))") {
                     ForEach(users) { u in
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
                                 Text(u.username).bold()
-                                if (u.isAdmin ?? 0) == 1 {
+                                if u.isAdmin == true {
                                     Text("admin").font(.caption2)
                                         .padding(.horizontal, 6).padding(.vertical, 2)
                                         .background(Theme.accent.opacity(0.2))
                                         .foregroundStyle(Theme.accent)
                                         .clipShape(Capsule())
                                 }
-                                PlanBadge(plan: u.plan ?? "free")
+                                PlanBadge(plan: u.isAdmin == true ? "pro" : (u.plan ?? "free"))
                                 Spacer()
                                 if (u.banned ?? 0) == 1 {
                                     Text("đã khóa").font(.caption).foregroundStyle(.red)
+                                } else if (u.status ?? "active") == "suspended" {
+                                    Text("tạm ngưng").font(.caption).foregroundStyle(.orange)
                                 }
+                            }
+                            if let pid = u.publicId, !pid.isEmpty {
+                                Text("ID: \(pid)").font(.caption2).foregroundStyle(Theme.accent)
                             }
                             if let e = u.email, !e.isEmpty {
                                 Text(e).font(.caption).foregroundStyle(.secondary)
@@ -147,8 +164,9 @@ struct AdminView: View {
                             if let p = u.phone, !p.isEmpty {
                                 Text(p).font(.caption).foregroundStyle(.secondary)
                             }
-                            Text("Credits: \(u.credits ?? 0)")
-                                .font(.caption).foregroundStyle(.secondary)
+                            if let lf = u.lastFeature, !lf.isEmpty {
+                                Text("Đang dùng: \(lf)").font(.caption2).foregroundStyle(.green)
+                            }
                             HStack {
                                 Menu("Thao tác") {
                                     Button((u.banned ?? 0) == 1 ? "Mở khóa" : "Khóa tài khoản",
@@ -158,8 +176,16 @@ struct AdminView: View {
                                     Menu("Đặt gói") {
                                         Button("Free") { Task { await setPlan(u, "free") } }
                                         Button("Pro") { Task { await setPlan(u, "pro") } }
-                                        Button("Ultra") { Task { await setPlan(u, "ultra") } }
-                                        Button("Max") { Task { await setPlan(u, "max") } }
+                                    }
+                                    if (u.status ?? "active") == "suspended" {
+                                        Button("Mở lại hoạt động") { Task { await unsuspend(u) } }
+                                    } else {
+                                        Menu("Tạm ngưng") {
+                                            Button("15 phút") { Task { await suspend(u, 15) } }
+                                            Button("1 giờ") { Task { await suspend(u, 60) } }
+                                            Button("1 ngày") { Task { await suspend(u, 1440) } }
+                                            Button("Vô thời hạn") { Task { await suspend(u, 0) } }
+                                        }
                                     }
                                     Button("Đổi mật khẩu giúp") { pwUser = u }
                                 }
@@ -280,6 +306,21 @@ struct AdminView: View {
     private func setPlan(_ u: AdminUser, _ plan: String) async {
         do { _ = try await store.api.adminSetPlan(u.id, plan: plan); await reload() }
         catch { self.error = error.localizedDescription }
+    }
+
+    private func suspend(_ u: AdminUser, _ minutes: Int) async {
+        do { _ = try await store.api.adminSuspend(u.id, minutes: minutes); await reload() }
+        catch { self.error = error.localizedDescription }
+    }
+    private func unsuspend(_ u: AdminUser) async {
+        do { _ = try await store.api.adminUnsuspend(u.id); await reload() }
+        catch { self.error = error.localizedDescription }
+    }
+    private func setMaintenance(_ on: Bool) async {
+        do {
+            _ = try await store.api.adminSetMaintenance(on: on, message: maintMsg)
+            store.maintenance = on
+        } catch { self.error = error.localizedDescription }
     }
 }
 

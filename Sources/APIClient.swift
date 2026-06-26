@@ -199,6 +199,58 @@ struct APIClient {
     func adminSetPlan(_ uid: Int, plan: String) async throws -> MessageResponse {
         try decode(try await send("/admin/users/\(uid)/plan", method: "POST", json: ["plan": plan]))
     }
+    func adminSuspend(_ uid: Int, minutes: Int) async throws -> MessageResponse {
+        try decode(try await send("/admin/users/\(uid)/suspend", method: "POST", json: ["minutes": minutes]))
+    }
+    func adminUnsuspend(_ uid: Int) async throws -> MessageResponse {
+        try decode(try await send("/admin/users/\(uid)/unsuspend", method: "POST"))
+    }
+    func adminSetMaintenance(on: Bool, message: String) async throws -> MessageResponse {
+        try decode(try await send("/admin/maintenance", method: "POST",
+                                  json: ["on": on, "message": message]))
+    }
+
+    // ---- Hồ sơ & trạng thái app ----
+    func getMe() async throws -> UserInfo {
+        try decode(try await send("/me"))
+    }
+    func appStatus() async throws -> AppStatus {
+        try decode(try await send("/app/status"))
+    }
+    func sendActivity(_ feature: String) async throws {
+        _ = try await send("/me/activity", method: "POST", json: ["feature": feature])
+    }
+
+    // ---- Video feed ----
+    func createPost(fileId: Int, caption: String) async throws -> PostCreateResponse {
+        try decode(try await send("/posts", method: "POST",
+                                  json: ["file_id": fileId, "caption": caption]))
+    }
+    func getFeed() async throws -> [PostItem] {
+        try decode(try await send("/feed"))
+    }
+    func likePost(_ pid: Int) async throws -> LikeResponse {
+        try decode(try await send("/posts/\(pid)/like", method: "POST"))
+    }
+    func deletePost(_ pid: Int) async throws -> MessageResponse {
+        try decode(try await send("/posts/\(pid)", method: "DELETE"))
+    }
+    /// Tải video của 1 bài về file tạm (có token) để phát trong app.
+    func downloadPostVideo(_ pid: Int) async throws -> URL {
+        var req = URLRequest(url: try makeURL("/posts/\(pid)/video"))
+        req.httpMethod = "GET"
+        req.timeoutInterval = 600
+        if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let (tempURL, resp) = try await URLSession.shared.download(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.message("Không tải được video.")
+        }
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent("feed_\(pid).mp4")
+        try? FileManager.default.removeItem(at: dest)
+        try FileManager.default.copyItem(at: tempURL, to: dest)
+        return dest
+    }
     func adminConfirmPayment(_ pid: Int) async throws -> MessageResponse {
         try decode(try await send("/admin/payments/\(pid)/confirm", method: "POST"))
     }

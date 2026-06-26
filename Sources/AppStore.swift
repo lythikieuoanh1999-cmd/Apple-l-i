@@ -12,6 +12,14 @@ final class AppStore: ObservableObject {
     @Published var isAdmin: Bool = false
     @Published var plan: String = "free"
     @Published var credits: Int = 0
+    @Published var publicId: String = ""
+
+    // Bảo trì (admin bật → khoá app người dùng)
+    @Published var maintenance: Bool = false
+    @Published var maintenanceMessage: String = ""
+
+    /// Admin luôn Pro vĩnh viễn; còn lại tuỳ gói.
+    var isPro: Bool { isAdmin || plan.lowercased() == "pro" }
 
     @Published var providers: [Provider] = []
     @Published var configuredKeys: Set<String> = []
@@ -47,6 +55,7 @@ final class AppStore: ObservableObject {
         isAdmin = d.bool(forKey: "isAdmin")
         plan = d.string(forKey: "plan") ?? "free"
         credits = d.integer(forKey: "credits")
+        publicId = d.string(forKey: "publicId") ?? ""
         isDark = d.object(forKey: "isDark") as? Bool ?? true
         language = d.string(forKey: "language") ?? "vi"
         systemPrompt = d.string(forKey: "systemPrompt") ?? ""
@@ -91,6 +100,7 @@ final class AppStore: ObservableObject {
         isAdmin = resp.user.isAdmin ?? false
         plan = resp.user.plan ?? "free"
         credits = resp.user.credits ?? 0
+        publicId = resp.user.publicId ?? ""
         Keychain.save("token", resp.token)
         d.set(resp.user.username, forKey: "username")
         d.set(resp.user.email ?? "", forKey: "email")
@@ -98,6 +108,22 @@ final class AppStore: ObservableObject {
         d.set(isAdmin, forKey: "isAdmin")
         d.set(plan, forKey: "plan")
         d.set(credits, forKey: "credits")
+        d.set(publicId, forKey: "publicId")
+    }
+
+    /// Tải lại hồ sơ + trạng thái bảo trì.
+    func refreshMe() async {
+        if let me = try? await api.getMe() {
+            isAdmin = me.isAdmin ?? false
+            plan = me.plan ?? "free"
+            publicId = me.publicId ?? publicId
+            d.set(isAdmin, forKey: "isAdmin"); d.set(plan, forKey: "plan")
+            d.set(publicId, forKey: "publicId")
+        }
+        if let st = try? await api.appStatus() {
+            maintenance = st.maintenance
+            maintenanceMessage = st.message
+        }
     }
 
     func refreshCredits() async {

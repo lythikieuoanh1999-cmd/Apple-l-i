@@ -232,9 +232,24 @@ struct FriendsView: View {
     // MARK: - Search Pane
     private var searchPane: some View {
         VStack(spacing: 12) {
+            // ID của bạn để người khác kết bạn
+            HStack {
+                Image(systemName: "qrcode").foregroundStyle(Theme.accent)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("ID của bạn").font(.caption2).foregroundStyle(.secondary)
+                    Text(store.publicId.isEmpty ? "—" : store.publicId)
+                        .font(.subheadline.bold()).foregroundStyle(Theme.accent)
+                }
+                Spacer()
+                Button {
+                    UIPasteboard.general.string = store.publicId
+                } label: { Image(systemName: "doc.on.doc") }
+            }
+            .padding(12).kCard(12).padding(.horizontal)
+
             // Search Input
             HStack {
-                TextField("Nhập tên tài khoản...", text: $searchQuery)
+                TextField("Nhập tên · SĐT · ID (KEN...)", text: $searchQuery)
                     .textFieldStyle(.plain)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
@@ -275,8 +290,12 @@ struct FriendsView: View {
                                 Image(systemName: "person.fill")
                                     .font(.headline)
                                     .foregroundStyle(.secondary)
-                                Text(res.username)
-                                    .font(.headline)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(res.username).font(.headline)
+                                    if let pid = res.publicId, !pid.isEmpty {
+                                        Text("ID: \(pid)").font(.caption2).foregroundStyle(.secondary)
+                                    }
+                                }
                                 Spacer()
                                 
                                 searchResultActionView(for: res)

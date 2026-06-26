@@ -15,10 +15,12 @@ struct UserInfo: Decodable, Hashable {
     let username: String
     let email: String?
     let phone: String?
+    let publicId: String?
     let isAdmin: Bool?
     let plan: String?
     let credits: Int?
     let lang: String?
+    let status: String?
 }
 
 struct AuthResponse: Decodable { let token: String; let user: UserInfo }
@@ -95,10 +97,15 @@ struct AdminUser: Identifiable, Decodable, Hashable {
     let username: String
     let email: String?
     let phone: String?
-    let isAdmin: Int?
+    let publicId: String?
+    let isAdmin: Bool?
     let banned: Int?
     let plan: String?
     let credits: Int?
+    let status: String?
+    let suspendUntil: Int?
+    let lastSeen: Int?
+    let lastFeature: String?
     let createdAt: Int?
 }
 
@@ -374,6 +381,32 @@ struct CleanupResponse: Decodable {
 struct UserSearchResult: Identifiable, Decodable, Hashable {
     let id: Int
     let username: String
+    let publicId: String?
+    let phone: String?
+}
+
+// Video feed (TikTok của riêng app)
+struct PostItem: Identifiable, Decodable, Hashable {
+    let id: Int
+    let caption: String?
+    let likes: Int
+    let createdAt: Int?
+    let fileId: Int
+    let username: String
+    let publicId: String?
+    let name: String?
+    let mime: String?
+    let liked: Bool
+}
+
+struct PostCreateResponse: Decodable { let id: Int; let message: String }
+struct LikeResponse: Decodable { let liked: Bool; let likes: Int }
+
+// Trạng thái app (bảo trì)
+struct AppStatus: Decodable {
+    let maintenance: Bool
+    let message: String
+    let version: String?
 }
 
 struct FriendRequestItem: Identifiable, Decodable, Hashable {
