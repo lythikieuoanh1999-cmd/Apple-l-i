@@ -57,6 +57,7 @@ final class GoogleVoiceEngine: ObservableObject {
 }
 
 struct NewVoiceTTSView: View {
+    @EnvironmentObject var store: AppStore
     @StateObject private var sys = SysVoiceEngine()
     @StateObject private var ggl = GoogleVoiceEngine()
 
@@ -92,7 +93,10 @@ struct NewVoiceTTSView: View {
                     Text("Giọng Google (online)").tag(1)
                 }.pickerStyle(.segmented)
 
-                if source == 0 {
+                // Free chỉ dùng giọng máy; Google online (voice-id) cần Pro
+                if source == 1 && !store.isPro {
+                    ProLockCard(feature: "Giọng Google online (voice-id)")
+                } else if source == 0 {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Chọn giọng (\(sysVoices.count) giọng có sẵn)").font(.caption).foregroundStyle(.secondary)
                         Picker("Giọng", selection: $voiceId) {

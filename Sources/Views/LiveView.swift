@@ -193,7 +193,7 @@ struct LiveRoomView: View {
             }
 
             // Thanh trên: thông tin + đóng
-            VStack {
+            VStack(spacing: 8) {
                 HStack {
                     HStack(spacing: 6) {
                         Text("@\(room.username)").font(.caption.bold()).foregroundStyle(.white)
@@ -206,9 +206,23 @@ struct LiveRoomView: View {
                     Button { Task { await leave() } } label: {
                         Image(systemName: "xmark.circle.fill").font(.title2).foregroundStyle(.white)
                     }
-                }.padding()
+                }
+
+                // Chủ phòng: thông tin đẩy hình (tự sinh sẵn) cho app Larix
+                if isHost, let key = info?.streamKey, let rtmp = info?.rtmpUrl {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Đẩy hình từ app Larix Broadcaster tới:")
+                            .font(.caption2).foregroundStyle(.white.opacity(0.85))
+                        hostCopyRow("Server", rtmp)
+                        hostCopyRow("Key", key)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.black.opacity(0.45))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
                 Spacer()
-            }
+            }.padding()
         }
         .task { await start() }
         .onDisappear { player?.pause() }
@@ -247,5 +261,18 @@ struct LiveRoomView: View {
     private func leave() async {
         if isHost { _ = try? await store.api.liveEnd(room.id) }  // chủ phòng đóng → kết thúc live
         dismiss()
+    }
+
+    private func hostCopyRow(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 6) {
+            Text(label).font(.caption2.bold()).foregroundStyle(.white.opacity(0.7))
+                .frame(width: 48, alignment: .leading)
+            Text(value).font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(.white).lineLimit(1)
+            Spacer()
+            Button { UIPasteboard.general.string = value } label: {
+                Image(systemName: "doc.on.doc").font(.caption2).foregroundStyle(.white)
+            }
+        }
     }
 }

@@ -68,6 +68,18 @@ struct VideoFeedView: View {
                     if let pid = p.publicId { Text("ID: \(pid)").font(.caption2).foregroundStyle(.secondary) }
                 }
                 Spacer()
+                if let uid = p.userId, p.username != store.username {
+                    Button { Task { await toggleFollow(p) } } label: {
+                        Text((p.following ?? false) ? "Đang theo dõi" : "Theo dõi")
+                            .font(.caption.bold())
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background((p.following ?? false) ? Color.gray.opacity(0.3) : Theme.accent)
+                            .foregroundStyle((p.following ?? false) ? .secondary : .white)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .id(uid)
+                }
                 if p.username == store.username || store.isAdmin {
                     Button(role: .destructive) { Task { await delete(p) } } label: {
                         Image(systemName: "trash").font(.caption)
@@ -148,9 +160,19 @@ struct VideoFeedView: View {
             if let idx = posts.firstIndex(where: { $0.id == p.id }) {
                 posts[idx] = PostItem(id: p.id, caption: p.caption, likes: r.likes,
                                       createdAt: p.createdAt, fileId: p.fileId,
-                                      username: p.username, publicId: p.publicId,
-                                      name: p.name, mime: p.mime, liked: r.liked)
+                                      userId: p.userId, username: p.username,
+                                      publicId: p.publicId, name: p.name, mime: p.mime,
+                                      liked: r.liked, following: p.following)
             }
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func toggleFollow(_ p: PostItem) async {
+        guard let uid = p.userId else { return }
+        do {
+            if p.following ?? false { _ = try await store.api.unfollow(uid) }
+            else { _ = try await store.api.follow(uid) }
+            await load()
         } catch { self.error = error.localizedDescription }
     }
 

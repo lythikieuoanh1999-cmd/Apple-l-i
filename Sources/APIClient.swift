@@ -262,6 +262,17 @@ struct APIClient {
     func liveComments(_ rid: Int, after: Int) async throws -> [LiveComment] {
         try decode(try await send("/live/\(rid)/comments?after=\(after)"))
     }
+
+    // ---- Follow / hồ sơ ----
+    func follow(_ uid: Int) async throws -> FollowResponse {
+        try decode(try await send("/follow/\(uid)", method: "POST"))
+    }
+    func unfollow(_ uid: Int) async throws -> FollowResponse {
+        try decode(try await send("/follow/\(uid)", method: "DELETE"))
+    }
+    func userProfile(_ uid: Int) async throws -> UserProfile {
+        try decode(try await send("/users/\(uid)/profile"))
+    }
     /// Tải video của 1 bài về file tạm (có token) để phát trong app.
     func downloadPostVideo(_ pid: Int) async throws -> URL {
         var req = URLRequest(url: try makeURL("/posts/\(pid)/video"))

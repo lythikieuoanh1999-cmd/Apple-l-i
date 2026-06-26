@@ -392,11 +392,24 @@ struct PostItem: Identifiable, Decodable, Hashable {
     let likes: Int
     let createdAt: Int?
     let fileId: Int
+    let userId: Int?
     let username: String
     let publicId: String?
     let name: String?
     let mime: String?
     let liked: Bool
+    let following: Bool?
+}
+
+struct FollowResponse: Decodable { let following: Bool }
+struct UserProfile: Decodable {
+    let id: Int
+    let username: String
+    let publicId: String?
+    let followers: Int
+    let following: Int
+    let posts: Int
+    let isFollowing: Bool
 }
 
 struct PostCreateResponse: Decodable { let id: Int; let message: String }
@@ -408,6 +421,8 @@ struct LiveRoom: Identifiable, Decodable, Hashable {
     let id: Int
     let title: String?
     let hlsUrl: String?
+    let streamKey: String?
+    let rtmpUrl: String?
     let viewers: Int
     let likes: Int
     let active: Int?
@@ -422,7 +437,13 @@ struct LiveComment: Identifiable, Decodable, Hashable {
     let content: String
     let createdAt: Int?
 }
-struct LiveCreateResponse: Decodable { let id: Int; let message: String }
+struct LiveCreateResponse: Decodable {
+    let id: Int
+    let message: String
+    let hlsUrl: String?
+    let rtmpUrl: String?
+    let streamKey: String?
+}
 
 // Trạng thái app (bảo trì)
 struct AppStatus: Decodable {

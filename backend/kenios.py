@@ -484,10 +484,17 @@ def init_db() -> None:
                 host_id INTEGER NOT NULL,
                 title TEXT,
                 hls_url TEXT,
+                stream_key TEXT,
                 viewers INTEGER DEFAULT 0,
                 likes INTEGER DEFAULT 0,
                 active INTEGER DEFAULT 1,
                 created_at INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS follows(
+                follower_id INTEGER NOT NULL,
+                following_id INTEGER NOT NULL,
+                created_at INTEGER,
+                PRIMARY KEY(follower_id, following_id)
             );
             CREATE TABLE IF NOT EXISTS live_messages(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -643,6 +650,7 @@ def _migrate() -> None:
         ("users", "suspend_until", "INTEGER DEFAULT 0"),
         ("users", "last_seen",     "INTEGER DEFAULT 0"),
         ("users", "last_feature",  "TEXT"),
+        ("live_rooms", "stream_key", "TEXT"),
         ("files", "mime",     "TEXT"),
         ("conversations", "pinned", "INTEGER DEFAULT 0"),
         ("conversations", "share_token", "TEXT"),
@@ -4156,7 +4164,7 @@ def create_post(b: PostIn, user=Depends(get_user)) -> dict[str, Any]:
 def feed(user=Depends(get_user)) -> list[dict[str, Any]]:
     with db() as c:
         rows = c.execute(
-            "SELECT p.id, p.caption, p.likes, p.created_at, p.file_id, "
+            "SELECT p.id, p.caption, p.likes, p.created_at, p.file_id, p.user_id, "
             "u.username, u.public_id, f.name, f.mime "
             "FROM posts p JOIN users u ON p.user_id=u.id "
             "JOIN files f ON p.file_id=f.id "
@@ -4164,12 +4172,16 @@ def feed(user=Depends(get_user)) -> list[dict[str, Any]]:
         ).fetchall()
         liked = {r["post_id"] for r in c.execute(
             "SELECT post_id FROM post_likes WHERE user_id=?", (user["id"],)).fetchall()}
+        following = {r["following_id"] for r in c.execute(
+            "SELECT following_id FROM follows WHERE follower_id=?", (user["id"],)).fetchall()}
     return [{
         "id": r["id"], "caption": r["caption"], "likes": r["likes"],
         "created_at": r["created_at"], "file_id": r["file_id"],
+        "user_id": r["user_id"],
         "username": r["username"], "public_id": r["public_id"],
         "name": r["name"], "mime": r["mime"],
         "liked": r["id"] in liked,
+        "following": r["user_id"] in following,
     } for r in rows]
 
 
@@ -4231,16 +4243,35 @@ class LiveCreateIn(BaseModel):
     hls_url: str = ""
 
 
+def _live_host(request: Request) -> str:
+    """Lấy host của VPS để tự dựng link RTMP/HLS (ưu tiên env LIVE_SERVER)."""
+    h = os.getenv("LIVE_SERVER", "").strip()
+    if h:
+        return h
+    host = (request.headers.get("host") or "").split(":")[0]
+    return host or "127.0.0.1"
+
+
 @app.post("/live/create")
-def live_create(b: LiveCreateIn, user=Depends(get_user)) -> dict[str, Any]:
+def live_create(b: LiveCreateIn, request: Request, user=Depends(get_user)) -> dict[str, Any]:
     title = (b.title or f"Live của {user['username']}")[:120]
+    host = _live_host(request)
+    hls_port = os.getenv("LIVE_HLS_PORT", "8080")
+    rtmp_port = os.getenv("LIVE_RTMP_PORT", "1935")
+    # Tự sinh stream key + link HLS nếu người dùng không tự dán link
+    stream_key = f"ken{int(time.time())}{secrets.token_hex(3)}"
+    hls_url = (b.hls_url or "").strip()
+    if not hls_url:
+        hls_url = f"http://{host}:{hls_port}/hls/{stream_key}.m3u8"
+    rtmp_url = f"rtmp://{host}:{rtmp_port}/live"
     with db() as c:
         cur = c.execute(
-            "INSERT INTO live_rooms(host_id,title,hls_url,viewers,likes,active,created_at) "
-            "VALUES(?,?,?,0,0,1,?)",
-            (user["id"], title, (b.hls_url or "")[:300], int(time.time())))
+            "INSERT INTO live_rooms(host_id,title,hls_url,stream_key,viewers,likes,active,created_at) "
+            "VALUES(?,?,?,?,0,0,1,?)",
+            (user["id"], title, hls_url[:300], stream_key, int(time.time())))
         rid = cur.lastrowid
-    return {"id": rid, "message": "Đã mở phòng live."}
+    return {"id": rid, "message": "Đã mở phòng live.",
+            "hls_url": hls_url, "rtmp_url": rtmp_url, "stream_key": stream_key}
 
 
 @app.post("/live/{rid}/end")
@@ -4266,15 +4297,19 @@ def live_rooms(user=Depends(get_user)) -> list[dict[str, Any]]:
 
 
 @app.get("/live/{rid}")
-def live_info(rid: int, user=Depends(get_user)) -> dict[str, Any]:
+def live_info(rid: int, request: Request, user=Depends(get_user)) -> dict[str, Any]:
     with db() as c:
         r = c.execute(
-            "SELECT r.id,r.title,r.hls_url,r.viewers,r.likes,r.active,r.host_id,"
+            "SELECT r.id,r.title,r.hls_url,r.stream_key,r.viewers,r.likes,r.active,r.host_id,"
             "u.username,u.public_id FROM live_rooms r JOIN users u ON r.host_id=u.id "
             "WHERE r.id=?", (rid,)).fetchone()
     if not r:
         raise HTTPException(status_code=404, detail="Không tìm thấy phòng live.")
-    return dict(r)
+    d = dict(r)
+    host = _live_host(request)
+    rtmp_port = os.getenv("LIVE_RTMP_PORT", "1935")
+    d["rtmp_url"] = f"rtmp://{host}:{rtmp_port}/live"
+    return d
 
 
 @app.post("/live/{rid}/join")
@@ -4316,6 +4351,43 @@ def live_comments(rid: int, after: int = 0, user=Depends(get_user)) -> list[dict
             "SELECT id,username,content,created_at FROM live_messages "
             "WHERE room_id=? AND id>? ORDER BY id ASC LIMIT 100", (rid, after)).fetchall()
     return [dict(r) for r in rows]
+
+
+# ======================== Follow / hồ sơ (như TikTok) ========================
+@app.post("/follow/{uid}")
+def follow_user(uid: int, user=Depends(get_user)) -> dict[str, Any]:
+    if uid == user["id"]:
+        raise HTTPException(status_code=400, detail="Không thể tự theo dõi mình.")
+    with db() as c:
+        if not c.execute("SELECT 1 FROM users WHERE id=?", (uid,)).fetchone():
+            raise HTTPException(status_code=404, detail="Không tìm thấy người dùng.")
+        c.execute("INSERT OR IGNORE INTO follows(follower_id,following_id,created_at) "
+                  "VALUES(?,?,?)", (user["id"], uid, int(time.time())))
+    return {"following": True}
+
+
+@app.delete("/follow/{uid}")
+def unfollow_user(uid: int, user=Depends(get_user)) -> dict[str, Any]:
+    with db() as c:
+        c.execute("DELETE FROM follows WHERE follower_id=? AND following_id=?", (user["id"], uid))
+    return {"following": False}
+
+
+@app.get("/users/{uid}/profile")
+def user_profile(uid: int, user=Depends(get_user)) -> dict[str, Any]:
+    with db() as c:
+        u = c.execute("SELECT id,username,public_id FROM users WHERE id=?", (uid,)).fetchone()
+        if not u:
+            raise HTTPException(status_code=404, detail="Không tìm thấy người dùng.")
+        followers = c.execute("SELECT COUNT(*) n FROM follows WHERE following_id=?", (uid,)).fetchone()["n"]
+        following = c.execute("SELECT COUNT(*) n FROM follows WHERE follower_id=?", (uid,)).fetchone()["n"]
+        posts = c.execute("SELECT COUNT(*) n FROM posts WHERE user_id=?", (uid,)).fetchone()["n"]
+        is_following = c.execute(
+            "SELECT 1 FROM follows WHERE follower_id=? AND following_id=?",
+            (user["id"], uid)).fetchone() is not None
+    return {"id": u["id"], "username": u["username"], "public_id": u["public_id"],
+            "followers": followers, "following": following, "posts": posts,
+            "is_following": is_following}
 
 
 @app.post("/admin/payments/{pid}/confirm")
