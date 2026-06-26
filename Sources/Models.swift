@@ -401,6 +401,28 @@ struct PostItem: Identifiable, Decodable, Hashable {
 
 struct PostCreateResponse: Decodable { let id: Int; let message: String }
 struct LikeResponse: Decodable { let liked: Bool; let likes: Int }
+struct LikesResponse: Decodable { let likes: Int }
+
+// Live (phòng live + bình luận)
+struct LiveRoom: Identifiable, Decodable, Hashable {
+    let id: Int
+    let title: String?
+    let hlsUrl: String?
+    let viewers: Int
+    let likes: Int
+    let active: Int?
+    let hostId: Int?
+    let username: String
+    let publicId: String?
+    let createdAt: Int?
+}
+struct LiveComment: Identifiable, Decodable, Hashable {
+    let id: Int
+    let username: String?
+    let content: String
+    let createdAt: Int?
+}
+struct LiveCreateResponse: Decodable { let id: Int; let message: String }
 
 // Trạng thái app (bảo trì)
 struct AppStatus: Decodable {

@@ -77,6 +77,9 @@ struct MainTabView: View {
             VideoFeedView() // TikTok của riêng app
                 .tabItem { Label("Video", systemImage: "play.rectangle.on.rectangle.fill") }
                 .tag(14)
+            LiveView() // phòng live + bình luận
+                .tabItem { Label("Live", systemImage: "dot.radiowaves.left.and.right") }
+                .tag(15)
             SettingsView()
                 .tabItem { Label("Cài đặt", systemImage: "gearshape.fill") }
                 .tag(5)
@@ -125,6 +128,7 @@ struct MainTabView: View {
         case 12: return "Trò chơi"
         case 13: return "GitHub"
         case 14: return "Video"
+        case 15: return "Live"
         case 5: return "Cài đặt"
         case 6: return "Quản trị"
         default: return "Khác"

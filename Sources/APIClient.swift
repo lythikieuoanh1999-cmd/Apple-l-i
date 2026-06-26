@@ -235,6 +235,33 @@ struct APIClient {
     func deletePost(_ pid: Int) async throws -> MessageResponse {
         try decode(try await send("/posts/\(pid)", method: "DELETE"))
     }
+
+    // ---- Live ----
+    func liveCreate(title: String, hlsUrl: String) async throws -> LiveCreateResponse {
+        try decode(try await send("/live/create", method: "POST",
+                                  json: ["title": title, "hls_url": hlsUrl]))
+    }
+    func liveEnd(_ rid: Int) async throws -> MessageResponse {
+        try decode(try await send("/live/\(rid)/end", method: "POST"))
+    }
+    func liveRooms() async throws -> [LiveRoom] {
+        try decode(try await send("/live/rooms"))
+    }
+    func liveInfo(_ rid: Int) async throws -> LiveRoom {
+        try decode(try await send("/live/\(rid)"))
+    }
+    func liveJoin(_ rid: Int) async throws {
+        _ = try await send("/live/\(rid)/join", method: "POST")
+    }
+    func liveLike(_ rid: Int) async throws -> LikesResponse {
+        try decode(try await send("/live/\(rid)/like", method: "POST"))
+    }
+    func liveComment(_ rid: Int, content: String) async throws {
+        _ = try await send("/live/\(rid)/comment", method: "POST", json: ["content": content])
+    }
+    func liveComments(_ rid: Int, after: Int) async throws -> [LiveComment] {
+        try decode(try await send("/live/\(rid)/comments?after=\(after)"))
+    }
     /// Tải video của 1 bài về file tạm (có token) để phát trong app.
     func downloadPostVideo(_ pid: Int) async throws -> URL {
         var req = URLRequest(url: try makeURL("/posts/\(pid)/video"))

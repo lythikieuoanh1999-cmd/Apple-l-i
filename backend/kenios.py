@@ -479,6 +479,24 @@ def init_db() -> None:
                 user_id INTEGER NOT NULL,
                 PRIMARY KEY(post_id, user_id)
             );
+            CREATE TABLE IF NOT EXISTS live_rooms(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                host_id INTEGER NOT NULL,
+                title TEXT,
+                hls_url TEXT,
+                viewers INTEGER DEFAULT 0,
+                likes INTEGER DEFAULT 0,
+                active INTEGER DEFAULT 1,
+                created_at INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS live_messages(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                room_id INTEGER NOT NULL,
+                user_id INTEGER,
+                username TEXT,
+                content TEXT,
+                created_at INTEGER
+            );
         """)
     _migrate()
 
@@ -4205,6 +4223,99 @@ def delete_post(pid: int, user=Depends(get_user)) -> dict[str, Any]:
         c.execute("DELETE FROM posts WHERE id=?", (pid,))
         c.execute("DELETE FROM post_likes WHERE post_id=?", (pid,))
     return {"message": "Đã xoá bài."}
+
+
+# ======================== Live (phòng live + bình luận như TikTok) ========================
+class LiveCreateIn(BaseModel):
+    title: str = ""
+    hls_url: str = ""
+
+
+@app.post("/live/create")
+def live_create(b: LiveCreateIn, user=Depends(get_user)) -> dict[str, Any]:
+    title = (b.title or f"Live của {user['username']}")[:120]
+    with db() as c:
+        cur = c.execute(
+            "INSERT INTO live_rooms(host_id,title,hls_url,viewers,likes,active,created_at) "
+            "VALUES(?,?,?,0,0,1,?)",
+            (user["id"], title, (b.hls_url or "")[:300], int(time.time())))
+        rid = cur.lastrowid
+    return {"id": rid, "message": "Đã mở phòng live."}
+
+
+@app.post("/live/{rid}/end")
+def live_end(rid: int, user=Depends(get_user)) -> dict[str, Any]:
+    with db() as c:
+        row = c.execute("SELECT host_id FROM live_rooms WHERE id=?", (rid,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Không tìm thấy phòng live.")
+        if row["host_id"] != user["id"] and not user["is_admin"]:
+            raise HTTPException(status_code=403, detail="Chỉ chủ phòng mới kết thúc được.")
+        c.execute("UPDATE live_rooms SET active=0 WHERE id=?", (rid,))
+    return {"message": "Đã kết thúc live."}
+
+
+@app.get("/live/rooms")
+def live_rooms(user=Depends(get_user)) -> list[dict[str, Any]]:
+    with db() as c:
+        rows = c.execute(
+            "SELECT r.id,r.title,r.hls_url,r.viewers,r.likes,r.created_at,"
+            "u.username,u.public_id FROM live_rooms r JOIN users u ON r.host_id=u.id "
+            "WHERE r.active=1 ORDER BY r.id DESC LIMIT 100").fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.get("/live/{rid}")
+def live_info(rid: int, user=Depends(get_user)) -> dict[str, Any]:
+    with db() as c:
+        r = c.execute(
+            "SELECT r.id,r.title,r.hls_url,r.viewers,r.likes,r.active,r.host_id,"
+            "u.username,u.public_id FROM live_rooms r JOIN users u ON r.host_id=u.id "
+            "WHERE r.id=?", (rid,)).fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail="Không tìm thấy phòng live.")
+    return dict(r)
+
+
+@app.post("/live/{rid}/join")
+def live_join(rid: int, user=Depends(get_user)) -> dict[str, Any]:
+    with db() as c:
+        c.execute("UPDATE live_rooms SET viewers=viewers+1 WHERE id=?", (rid,))
+    return {"ok": True}
+
+
+@app.post("/live/{rid}/like")
+def live_like(rid: int, user=Depends(get_user)) -> dict[str, Any]:
+    with db() as c:
+        c.execute("UPDATE live_rooms SET likes=likes+1 WHERE id=?", (rid,))
+        r = c.execute("SELECT likes FROM live_rooms WHERE id=?", (rid,)).fetchone()
+    return {"likes": r["likes"] if r else 0}
+
+
+class LiveCommentIn(BaseModel):
+    content: str
+
+
+@app.post("/live/{rid}/comment")
+def live_comment(rid: int, b: LiveCommentIn, user=Depends(get_user)) -> dict[str, Any]:
+    if not b.content.strip():
+        raise HTTPException(status_code=400, detail="Bình luận trống.")
+    with db() as c:
+        cur = c.execute(
+            "INSERT INTO live_messages(room_id,user_id,username,content,created_at) "
+            "VALUES(?,?,?,?,?)",
+            (rid, user["id"], user["username"], b.content.strip()[:300], int(time.time())))
+        mid = cur.lastrowid
+    return {"id": mid}
+
+
+@app.get("/live/{rid}/comments")
+def live_comments(rid: int, after: int = 0, user=Depends(get_user)) -> list[dict[str, Any]]:
+    with db() as c:
+        rows = c.execute(
+            "SELECT id,username,content,created_at FROM live_messages "
+            "WHERE room_id=? AND id>? ORDER BY id ASC LIMIT 100", (rid, after)).fetchall()
+    return [dict(r) for r in rows]
 
 
 @app.post("/admin/payments/{pid}/confirm")
