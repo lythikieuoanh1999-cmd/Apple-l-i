@@ -162,11 +162,11 @@ struct SocialMediaToolsView: View {
                             }
                             .buttonStyle(.borderedProminent)
 
-                            // Mở thư viện trong app
+                            // Mở mục Khám phá (chứa Thư viện)
                             Button {
-                                store.tab = 3 // LibraryView tag
+                                store.tab = 16 // Khám phá → Thư viện
                             } label: {
-                                Label("Thư viện app", systemImage: "clock.arrow.circlepath")
+                                Label("Khám phá", systemImage: "square.grid.2x2.fill")
                             }
                             .buttonStyle(.bordered)
                         }
